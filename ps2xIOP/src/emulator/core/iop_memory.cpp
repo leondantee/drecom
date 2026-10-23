@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <cstdio>
 
 namespace ps2x::iop::detail
 {
@@ -282,45 +283,102 @@ namespace ps2x::iop::detail
         return result;
     }
 
-    uint32_t IopMemory::allocate(uint32_t size, uint32_t alignment, std::optional<uint32_t> fixed)
+    uint32_t IopMemory::allocate(uint32_t size, uint32_t alignment,
+                                  std::optional<uint32_t> fixed, bool fromTop)
     {
         size = alignUp(std::max(size, 1u), 16u);
         alignment = std::max<uint32_t>(alignment, 4u);
+
+        auto blocks = m_allocations;
+        std::sort(blocks.begin(), blocks.end(),
+                  [](const Allocation &a, const Allocation &b)
+                  {
+                      return a.address < b.address;
+                  });
+
+        auto fits = [&](uint32_t address) -> bool
+        {
+            if (address < HeapBase || address > HeapLimit ||
+                size > HeapLimit - address)
+                return false;
+
+            for (const auto &block : blocks)
+            {
+                if (address < block.address + block.size &&
+                    block.address < address + size)
+                    return false;
+            }
+            return true;
+        };
+
+        uint32_t result = 0u;
+
         if (fixed)
         {
-            const uint32_t address = *fixed;
-            if (address < HeapBase || address + size > HeapLimit)
-                return 0u;
-            for (const auto &block : m_allocations)
-                if (address < block.address + block.size && block.address < address + size)
-                    return 0u;
-            m_allocations.push_back({address, size});
-            markOwned(address, size);
-            return address;
+            if (fits(*fixed))
+                result = *fixed;
+        }
+        else if (fromTop)
+        {
+            uint32_t gapEnd = HeapLimit;
+
+            for (auto it = blocks.rbegin(); it != blocks.rend(); ++it)
+            {
+                const uint32_t gapStart =
+                    std::max(it->address + it->size, HeapBase);
+
+                if (gapEnd >= gapStart &&
+                    size <= gapEnd - gapStart)
+                {
+                    const uint32_t address =
+                        (gapEnd - size) & ~(alignment - 1u);
+
+                    if (address >= gapStart && fits(address))
+                    {
+                        result = address;
+                        break;
+                    }
+                }
+
+                gapEnd = std::min(gapEnd, it->address);
+            }
+
+            if (result == 0u && gapEnd >= HeapBase &&
+                size <= gapEnd - HeapBase)
+            {
+                const uint32_t address =
+                    (gapEnd - size) & ~(alignment - 1u);
+
+                if (fits(address))
+                    result = address;
+            }
+        }
+        else
+        {
+            uint32_t candidate = alignUp(HeapBase, alignment);
+
+            for (const auto &block : blocks)
+            {
+                if (candidate <= block.address &&
+                    size <= block.address - candidate)
+                    break;
+
+                if (candidate < block.address + block.size)
+                    candidate = alignUp(block.address + block.size,
+                                        alignment);
+            }
+
+            if (fits(candidate))
+                result = candidate;
         }
 
-        uint32_t candidate = alignUp(m_heapCursor, alignment);
-        for (;;)
-        {
-            bool overlap = false;
-            for (const auto &block : m_allocations)
-            {
-                if (candidate < block.address + block.size && block.address < candidate + size)
-                {
-                    candidate = alignUp(block.address + block.size, alignment);
-                    overlap = true;
-                    break;
-                }
-            }
-            if (!overlap)
-                break;
-        }
-        if (candidate > HeapLimit || size > HeapLimit - candidate)
+        if (result == 0u)
             return 0u;
-        m_allocations.push_back({candidate, size});
-        markOwned(candidate, size);
-        m_heapCursor = std::max(m_heapCursor, candidate + size);
-        return candidate;
+
+        m_allocations.push_back({result, size});
+        markOwned(result, size);
+        m_heapCursor = std::max(m_heapCursor, result + size);
+        return result;
     }
 
     bool IopMemory::freeAllocation(uint32_t address)

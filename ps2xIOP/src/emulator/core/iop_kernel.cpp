@@ -4,6 +4,7 @@
 #include "../iop_emulator_const.h"
 
 #include <algorithm>
+#include <cstdio>
 
 namespace ps2x::iop::detail
 {
@@ -57,10 +58,16 @@ namespace ps2x::iop::detail
             thread.stackBase = m_memory.allocate(thread.stackSize + kStackGuardBytes, 16u);
             if (thread.stackBase == 0u)
             {
+                std::fprintf(stderr,
+                    "[IOP THREAD DEBUG] CreateThread FAILED stackSize=%u\n",
+                    thread.stackSize);
                 setV0(-400);
                 return true;
             }
             const int id = thread.id;
+            std::fprintf(stderr,
+                "[IOP THREAD DEBUG] CreateThread id=%d entry=0x%X stackSize=%u\n",
+                id, thread.entry, thread.stackSize);
             m_threads.emplace(id, std::move(thread));
             setV0(id);
             return true;
@@ -87,9 +94,12 @@ namespace ps2x::iop::detail
             const auto it = m_threads.find(id);
             if (it == m_threads.end())
             {
+                std::fprintf(stderr, "[IOP THREAD DEBUG] StartThread INVALID id=%d\n", id);
                 setV0(-1);
                 return true;
             }
+            std::fprintf(stderr,
+                "[IOP THREAD DEBUG] StartThread id=%d\n", id);
             IopThread &thread = it->second;
             thread.cpu = {};
             thread.cpu.pc = thread.entry;

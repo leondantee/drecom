@@ -194,6 +194,11 @@ int main(int argc, char *argv[])
         }
 
         PS2Runtime runtime;
+
+        // Configure original PlayStation 2 disc image.
+        auto ioPaths = PS2Runtime::getIoPaths();
+        ioPaths.cdImage = "C:/PS2Projects/Game/Original/Devil May Cry - Trial Edition (Japan).iso";
+        PS2Runtime::setIoPaths(ioPaths);
 #if defined(PS2X_ENABLE_DEBUG_UI) && !defined(PLATFORM_VITA)
         // This hook is to prevent leak rlimgui deps to recompiler etc
         PS2DebugPanel debugPanel;

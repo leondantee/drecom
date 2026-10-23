@@ -5,6 +5,7 @@
 #include "ps2x/iop/iop_host.h"
 
 #include <string>
+#include <cstdio>
 
 namespace ps2x::iop::detail
 {
@@ -29,7 +30,19 @@ namespace ps2x::iop::detail
         {
             const uint32_t address = a0 == 2u
                                          ? m_memory.allocate(a1, 16u, a2)
-                                         : m_memory.allocate(a1, 16u);
+                                         : m_memory.allocate(a1, 16u, std::nullopt, a0 == 1u);
+            if (address == 0u)
+            {
+                std::fprintf(stderr,
+                    "[IOP MEMORY DEBUG] AllocSysMemory FAILED mode=%u size=%u fixed=0x%X maxFree=%u\n",
+                    a0, a1, a2, m_memory.maxFreeMemory());
+            }
+            if (address != 0u)
+            {
+                std::fprintf(stderr,
+                    "[IOP ALLOC TRACE] pc=0x%X mode=%u size=%u address=0x%X\n",
+                    cpu.pc, a0, a1, address);
+            }
             setV0(address);
             return true;
         }

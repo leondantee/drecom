@@ -194,6 +194,10 @@ namespace ps2x::iop::detail
             currentLsn = 0u;
             lastError = kCdvdErrorNone;
             streamFlag = 0u;
+            streamInitialized = false;
+            streamBuffer = 0u;
+            streamBufferSectors = 0u;
+            streamBanks = 0u;
             lastReadTimeout = 0u;
             interruptEventFlagId = 0;
             virtualIsoBuilt = false;
@@ -338,12 +342,49 @@ namespace ps2x::iop::detail
                 }
             }
 
+            case 56: // sceCdStInit
+            {
+                const uint64_t bytes =
+                    static_cast<uint64_t>(a0) * kSectorSize;
+
+                const bool valid =
+                    a0 != 0u &&
+                    a1 != 0u &&
+                    a1 <= a0 &&
+                    a2 != 0u &&
+                    bytes <= IopMemory::RamSize &&
+                    a2 < IopMemory::RamSize &&
+                    bytes <= IopMemory::RamSize - a2;
+
+                streamInitialized = valid;
+
+                if (valid)
+                {
+                    streamBuffer = a2;
+                    streamBufferSectors = a0;
+                    streamBanks = a1;
+                    streamFlag = 0u;
+                    lastError = kCdvdErrorNone;
+                }
+
+                cpu.gpr[2] = valid ? 1u : 0u;
+                return true;
+            }
+
             case 75: // sceCdMmode
                 mediaMode = a0;
                 cpu.gpr[2] = 1u;
                 return true;
 
             default:
+                if (ordinal == 56u)
+                {
+                    host.log(LogLevel::Info,
+                        "[CDVD STREAM DEBUG] sceCdStInit bufmax=" +
+                        std::to_string(a0) +
+                        " bankmax=" + std::to_string(a1) +
+                        " buffer=" + std::to_string(a2));
+                }
                 return false;
             }
         }
@@ -717,6 +758,10 @@ namespace ps2x::iop::detail
         uint32_t currentLsn = 0u;
         uint32_t lastError = kCdvdErrorNone;
         uint32_t streamFlag = 0u;
+        bool streamInitialized = false;
+        uint32_t streamBuffer = 0u;
+        uint32_t streamBufferSectors = 0u;
+        uint32_t streamBanks = 0u;
         uint32_t lastReadTimeout = 0u;
         int interruptEventFlagId = 0;
         uint64_t imageHandle = 0u;
