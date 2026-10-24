@@ -1,0 +1,52 @@
+name: IOP memory regression
+
+on:
+  push:
+    branches:
+      - diagnostic/iop-allocation-failure-details
+  pull_request:
+    paths:
+      - 'drecom/PS2Recomp/ps2xIOP/**'
+      - '.github/workflows/iop-pr-regression.yml'
+  workflow_dispatch:
+
+jobs:
+  iop-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - name: Locate generated runner source
+        run: |
+          matches="$(find . -type f -name 'Message_init_0x296060.cpp' -print)"
+          if [ -z "$matches" ]; then
+            echo "Generated runner source Message_init_0x296060.cpp is absent from the checkout"
+          else
+            printf '%s\n' "$matches"
+          fi
+      - name: Configure isolated IOP tests
+        run: cmake -S drecom/PS2Recomp/ps2xIOP -B build-iop -G Ninja -DPS2X_IOP_BUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Debug
+      - name: Build isolated IOP tests
+        run: cmake --build build-iop --parallel 2
+      - name: Run IOP tests
+        run: ctest --test-dir build-iop --output-on-failure
+
+  iop-sanitizers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - name: Configure AddressSanitizer and UndefinedBehaviorSanitizer
+        run: |
+          cmake -S drecom/PS2Recomp/ps2xIOP -B build-iop-sanitized -G Ninja \
+            -DPS2X_IOP_BUILD_TESTS=ON \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=all" \
+            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
+      - name: Build sanitized tests
+        run: cmake --build build-iop-sanitized --parallel 2
+      - name: Run sanitized IOP tests
+        env:
+          ASAN_OPTIONS: detect_leaks=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: ctest --test-dir build-iop-sanitized --output-on-failure

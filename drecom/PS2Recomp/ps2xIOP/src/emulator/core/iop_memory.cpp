@@ -287,8 +287,16 @@ namespace ps2x::iop::detail
     uint32_t IopMemory::allocate(uint32_t size, uint32_t alignment,
                                   std::optional<uint32_t> fixed, bool fromTop)
     {
+        // Reject impossible requests before 32-bit alignment can wrap to zero.
+        // A wrapped size could otherwise allocate a tiny block for a huge request.
+        if (size > HeapLimit - HeapBase)
+            return 0u;
         size = alignUp(std::max(size, 1u), 16u);
+        if (size > HeapLimit - HeapBase)
+            return 0u;
         alignment = std::max<uint32_t>(alignment, 4u);
+        if ((alignment & (alignment - 1u)) != 0u)
+            return 0u;
 
         auto blocks = m_allocations;
         std::sort(blocks.begin(), blocks.end(),
@@ -316,7 +324,8 @@ namespace ps2x::iop::detail
 
         if (fixed)
         {
-            if (fits(*fixed))
+            // Fixed-address allocations still must honor the requested alignment.
+            if ((*fixed & (alignment - 1u)) == 0u && fits(*fixed))
                 result = *fixed;
         }
         else if (fromTop)
