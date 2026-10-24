@@ -315,21 +315,40 @@ namespace
                                      ((a >= 0x40u) ? 0x8000u : 0u));
     }
 
-    void decodeDisplaySize(uint64_t display64, uint32_t &outWidth, uint32_t &outHeight)
+    struct GSScanoutGeometry
     {
+        uint32_t dx = 0u;
+        uint32_t dy = 0u;
+        uint32_t horizontalScale = 1u;
+        uint32_t verticalScale = 1u;
+        uint32_t width = kDefaultDisplayWidth;
+        uint32_t rasterLines = kDefaultDisplayHeight;
+        uint32_t sourceRows = kDefaultDisplayHeight;
+    };
+
+    GSScanoutGeometry decodeScanoutGeometry(uint64_t display64, bool halfHeightField)
+    {
+        GSScanoutGeometry geometry{};
+        geometry.dx = static_cast<uint32_t>(display64 & 0x0FFFu);
+        geometry.dy = static_cast<uint32_t>((display64 >> 12) & 0x07FFu);
+        geometry.horizontalScale = 1u + static_cast<uint32_t>((display64 >> 23) & 0x0Fu);
+        geometry.verticalScale = 1u + static_cast<uint32_t>((display64 >> 27) & 0x03u);
         const uint32_t dw = static_cast<uint32_t>((display64 >> 32) & 0x0FFFu);
         const uint32_t dh = static_cast<uint32_t>((display64 >> 44) & 0x07FFu);
-        const uint32_t magh = static_cast<uint32_t>((display64 >> 23) & 0x0Fu);
-
-        outWidth = (dw + 1u) / (magh + 1u);
-        outHeight = dh + 1u;
-        if (outWidth < 64u || outHeight < 64u)
+        geometry.width = (dw + 1u) / geometry.horizontalScale;
+        geometry.rasterLines = dh + 1u;
+        if (geometry.width < 64u || geometry.rasterLines < 64u)
         {
-            outWidth = kDefaultDisplayWidth;
-            outHeight = kDefaultDisplayHeight;
+            geometry.width = kDefaultDisplayWidth;
+            geometry.rasterLines = kDefaultDisplayHeight;
+            geometry.horizontalScale = 1u;
+            geometry.verticalScale = 1u;
         }
-        outWidth = std::min<uint32_t>(outWidth, kHostFrameWidth);
-        outHeight = std::min<uint32_t>(outHeight, kHostFrameHeight);
+        geometry.width = std::min(geometry.width, kHostFrameWidth);
+        geometry.rasterLines = std::min(geometry.rasterLines, kHostFrameHeight);
+        const uint32_t linesPerRow = geometry.verticalScale * (halfHeightField ? 2u : 1u);
+        geometry.sourceRows = (geometry.rasterLines + linesPerRow - 1u) / linesPerRow;
+        return geometry;
     }
 
     GSFrameReg decodeDisplayFrame(uint64_t dispfb64)
@@ -1862,15 +1881,18 @@ PresentationFrame GSCpuBackend::PresentFromLocalMemory(const GSPresentationReque
     PresentationFrame result{};
     const GSPmodeState pmode = decodePmode(request.pmode);
     const GSSmode2State smode2 = decodeSMode2(request.smode2);
-    const bool fieldMode = smode2.interlaced && !smode2.frameMode;
+    // INT+FFMD is the SDK's interlaced field scanout: DH describes
+    // raster lines while VRAM contains half as many field rows. The old
+    // INT-only host line-doubling remains for existing legacy callers.
+    const bool halfHeightField = smode2.interlaced && smode2.frameMode;
+    const bool legacyLineDouble = smode2.interlaced && !smode2.frameMode;
     const bool oddField = (request.vsyncTick & 1ull) != 0ull;
     const GSFrameReg displayFrame1 = decodeDisplayFrame(request.dispfb1);
     const GSFrameReg displayFrame2 = decodeDisplayFrame(request.dispfb2);
     const GSDisplayReadOrigin origin1 = decodeDisplayReadOrigin(request.dispfb1);
     const GSDisplayReadOrigin origin2 = decodeDisplayReadOrigin(request.dispfb2);
-    uint32_t width1 = 0u, height1 = 0u, width2 = 0u, height2 = 0u;
-    decodeDisplaySize(request.display1, width1, height1);
-    decodeDisplaySize(request.display2, width2, height2);
+    const GSScanoutGeometry geometry1 = decodeScanoutGeometry(request.display1, halfHeightField);
+    const GSScanoutGeometry geometry2 = decodeScanoutGeometry(request.display2, halfHeightField);
     const bool valid1 = pmode.enableCrt1 && hasDisplaySetup(request.display1, displayFrame1);
     const bool valid2 = pmode.enableCrt2 && hasDisplaySetup(request.display2, displayFrame2);
     if (!valid1 && !valid2)
@@ -1918,22 +1940,42 @@ PresentationFrame GSCpuBackend::PresentFromLocalMemory(const GSPresentationReque
         return true;
     };
 
+    // Present each circuit at its DISPLAY.DX/DY location rather than
+    // overlaying the first source at the top-left of the second.
+    auto sourceRow = [&](const GSScanoutGeometry &g, uint32_t rasterY) -> uint32_t
+    {
+        return rasterY / (g.verticalScale * (halfHeightField ? 2u : 1u));
+    };
+
     if (valid1 && valid2)
     {
         GSFrameReg selected1{}, selected2{};
         std::vector<uint8_t> crt1, crt2;
         bool preferred1 = false, preferred2 = false;
-        if (copySource(displayFrame1, origin1, width1, height1, false, true, selected1, crt1, preferred1) &&
-            copySource(displayFrame2, origin2, width2, height2, false, true, selected2, crt2, preferred2))
+        if (copySource(displayFrame1, origin1, geometry1.width, geometry1.sourceRows,
+                       false, true, selected1, crt1, preferred1) &&
+            copySource(displayFrame2, origin2, geometry2.width, geometry2.sourceRows,
+                       false, true, selected2, crt2, preferred2))
         {
-            result.width = std::max(width1, width2);
-            result.height = std::max(height1, height2);
+            const uint32_t minDx = std::min(geometry1.dx, geometry2.dx);
+            const uint32_t minDy = std::min(geometry1.dy, geometry2.dy);
+            const uint32_t clockUnit = std::min(geometry1.horizontalScale, geometry2.horizontalScale);
+            auto circuitExtentX = [&](const GSScanoutGeometry &g) -> uint32_t
+            {
+                return (g.dx - minDx + g.width * g.horizontalScale + clockUnit - 1u) / clockUnit;
+            };
+            result.width = std::min(kHostFrameWidth,
+                                    std::max(circuitExtentX(geometry1), circuitExtentX(geometry2)));
+            result.height = std::min(kHostFrameHeight,
+                                     std::max(geometry1.dy - minDy + geometry1.rasterLines,
+                                              geometry2.dy - minDy + geometry2.rasterLines));
             result.pixels.assign(kHostFrameWidth * kHostFrameHeight * 4u, 0u);
+
             const uint8_t bgR = static_cast<uint8_t>(request.bgcolor);
             const uint8_t bgG = static_cast<uint8_t>(request.bgcolor >> 8u);
             const uint8_t bgB = static_cast<uint8_t>(request.bgcolor >> 16u);
-            for (uint32_t y = 0; y < result.height; ++y)
-                for (uint32_t x = 0; x < result.width; ++x)
+            for (uint32_t y = 0u; y < result.height; ++y)
+                for (uint32_t x = 0u; x < result.width; ++x)
                 {
                     uint8_t *dst = result.pixels.data() + (y * kHostFrameWidth + x) * 4u;
                     dst[0] = bgR;
@@ -1941,23 +1983,46 @@ PresentationFrame GSCpuBackend::PresentFromLocalMemory(const GSPresentationReque
                     dst[2] = bgB;
                     dst[3] = pmode.alp;
                 }
-            if (!pmode.slbg)
-                for (uint32_t y = 0; y < height2; ++y)
-                    std::memcpy(result.pixels.data() + y * kHostFrameWidth * 4u, crt2.data() + y * kHostFrameWidth * 4u, width2 * 4u);
-            for (uint32_t y = 0; y < height1; ++y)
-                for (uint32_t x = 0; x < width1; ++x)
+
+            // Read a source pixel at a given output coordinate, accounting
+            // for magnification and video-clock offsets in each circuit.
+            auto sampleCircuit = [&](const std::vector<uint8_t> &pixels,
+                                     const GSScanoutGeometry &g,
+                                     uint32_t x, uint32_t y) -> const uint8_t *
+            {
+                const uint32_t offsetX = (g.dx - minDx) / clockUnit;
+                const uint32_t offsetY = g.dy - minDy;
+                if (x < offsetX || y < offsetY || y - offsetY >= g.rasterLines)
+                    return nullptr;
+                const uint32_t localX = (x - offsetX) * clockUnit / g.horizontalScale;
+                const uint32_t localY = sourceRow(g, y - offsetY);
+                if (localX >= g.width || localY >= g.sourceRows)
+                    return nullptr;
+                return pixels.data() + (localY * kHostFrameWidth + localX) * 4u;
+            };
+
+            for (uint32_t y = 0u; y < result.height; ++y)
+                for (uint32_t x = 0u; x < result.width; ++x)
                 {
-                    const uint8_t *src = crt1.data() + (y * kHostFrameWidth + x) * 4u;
                     uint8_t *dst = result.pixels.data() + (y * kHostFrameWidth + x) * 4u;
-                    const uint32_t factor = pmode.mmod ? pmode.alp : std::min<uint32_t>(255u, static_cast<uint32_t>(src[3]) * 2u);
-                    dst[0] = blendPresentationChannel(src[0], dst[0], factor);
-                    dst[1] = blendPresentationChannel(src[1], dst[1], factor);
-                    dst[2] = blendPresentationChannel(src[2], dst[2], factor);
-                    dst[3] = pmode.amod ? dst[3] : src[3];
+                    if (!pmode.slbg)
+                    {
+                        if (const uint8_t *src2 = sampleCircuit(crt2, geometry2, x, y))
+                            std::memcpy(dst, src2, 4u);
+                    }
+                    if (const uint8_t *src1 = sampleCircuit(crt1, geometry1, x, y))
+                    {
+                        const uint32_t factor = pmode.mmod ? pmode.alp :
+                            std::min<uint32_t>(255u, static_cast<uint32_t>(src1[3]) * 2u);
+                        dst[0] = blendPresentationChannel(src1[0], dst[0], factor);
+                        dst[1] = blendPresentationChannel(src1[1], dst[1], factor);
+                        dst[2] = blendPresentationChannel(src1[2], dst[2], factor);
+                        dst[3] = pmode.amod ? dst[3] : src1[3];
+                    }
                 }
-            normalizePresentationAlpha(result.pixels, result.width, result.height);
-            if (fieldMode)
+            if (legacyLineDouble)
                 applyFieldPresentation(result.pixels, result.width, result.height, oddField);
+            normalizePresentationAlpha(result.pixels, result.width, result.height);
             result.displayFbp = displayFrame1.fbp;
             result.sourceFbp = selected1.fbp;
             return result;
@@ -1966,12 +2031,24 @@ PresentationFrame GSCpuBackend::PresentFromLocalMemory(const GSPresentationReque
 
     const GSFrameReg &displayFrame = valid1 ? displayFrame1 : displayFrame2;
     const GSDisplayReadOrigin &origin = valid1 ? origin1 : origin2;
-    result.width = valid1 ? width1 : width2;
-    result.height = valid1 ? height1 : height2;
-    GSFrameReg selected = displayFrame;
-    if (!copySource(displayFrame, origin, result.width, result.height, true, false, selected, result.pixels, result.usedPreferred))
+    const GSScanoutGeometry &geometry = valid1 ? geometry1 : geometry2;
+    result.width = geometry.width;
+    result.height = geometry.rasterLines;
+    GSFrameReg selected{};
+    std::vector<uint8_t> sourcePixels;
+    if (!copySource(displayFrame, origin, geometry.width, geometry.sourceRows,
+                    true, false, selected, sourcePixels, result.usedPreferred))
         return {};
-    if (fieldMode)
+
+    result.pixels.assign(kHostFrameWidth * kHostFrameHeight * 4u, 0u);
+    for (uint32_t y = 0u; y < result.height; ++y)
+    {
+        const uint32_t sy = sourceRow(geometry, y);
+        std::memcpy(result.pixels.data() + y * kHostFrameWidth * 4u,
+                    sourcePixels.data() + sy * kHostFrameWidth * 4u,
+                    result.width * 4u);
+    }
+    if (legacyLineDouble)
         applyFieldPresentation(result.pixels, result.width, result.height, oddField);
     normalizePresentationAlpha(result.pixels, result.width, result.height);
     result.displayFbp = displayFrame.fbp;
