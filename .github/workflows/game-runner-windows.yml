@@ -1,0 +1,60 @@
+name: Game runner Windows build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'drecom/PS2Recomp/ps2xRuntime/**'
+      - 'drecom/PS2Recomp/ps2xIOP/**'
+      - 'drecom/Game/Recompiled/output/**'
+      - '.github/workflows/game-runner-windows.yml'
+  workflow_dispatch:
+
+jobs:
+  windows-game-runner:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+      - name: Inspect and stage recompiled game sources
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $source = 'drecom/Game/Recompiled/output'
+          $runtime = 'drecom/PS2Recomp/ps2xRuntime'
+          $cpp = @(Get-ChildItem $source -Filter '*.cpp' -File)
+          Write-Host "Generated game .cpp files: $($cpp.Count)"
+          if ($cpp.Count -eq 0) { throw 'No recompiled game .cpp sources were found' }
+          foreach ($header in @('ps2_recompiled_functions.h', 'ps2_recompiled_stubs.h')) {
+            $candidate = Join-Path $source $header
+            if (-not (Test-Path $candidate)) { throw "Required header missing: $candidate" }
+            Copy-Item $candidate (Join-Path $runtime 'include') -Force
+          }
+          $dest = Join-Path $runtime 'src/runner'
+          New-Item -Path $dest -ItemType Directory -Force | Out-Null
+          foreach ($file in $cpp) { Copy-Item $file.FullName $dest -Force }
+          Write-Host "Runner sources staged at $dest"
+      - name: Configure runtime for Windows
+        shell: pwsh
+        run: |
+          cmake -S drecom/PS2Recomp -B build-game -DPS2X_BUILD_RECOMP=OFF -DPS2X_BUILD_ANALYZER=OFF -DPS2X_BUILD_TEST=OFF -DPS2X_BUILD_STUDIO=OFF -DPS2X_ENABLE_FFMPEG=OFF -DPS2X_ENABLE_DEBUG_UI=OFF -DPS2X_ENABLE_RUNNER_UNITY_BUILD=ON -DPS2X_ENABLE_RUNNER_PCH=ON
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build game runner
+        shell: pwsh
+        run: |
+          cmake --build build-game --config Release --target ps2EntryRunner --parallel 2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Prepare executable
+        shell: pwsh
+        run: |
+          $exe = @(Get-ChildItem build-game -Filter 'ps2EntryRunner.exe' -Recurse -File)
+          if ($exe.Count -eq 0) { throw 'Build succeeded without producing ps2EntryRunner.exe' }
+          New-Item dist -ItemType Directory -Force | Out-Null
+          Copy-Item $exe[0].FullName dist/ps2EntryRunner.exe -Force
+          Write-Host "Built executable: $($exe[0].FullName)"
+      - name: Upload game runner executable
+        uses: actions/upload-artifact@v6
+        with:
+          name: drecom-ps2-entry-runner-windows
+          path: dist/ps2EntryRunner.exe
+          if-no-files-found: error
