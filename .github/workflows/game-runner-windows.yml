@@ -10,6 +10,10 @@ on:
       - '.github/workflows/game-runner-windows.yml'
   workflow_dispatch:
 
+permissions:
+  contents: read
+  statuses: write
+
 jobs:
   windows-game-runner:
     runs-on: windows-latest
@@ -58,3 +62,12 @@ jobs:
           name: drecom-ps2-entry-runner-windows
           path: dist/ps2EntryRunner.exe
           if-no-files-found: error
+      - name: Publish build status to the main commit
+        if: always()
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $outcome = if ('${{ job.status }}' -eq 'success') { 'success' } else { 'failure' }
+          gh api --method POST "repos/$env:GITHUB_REPOSITORY/statuses/$env:GITHUB_SHA" -f "state=$outcome" -f "context=game-runner/windows-build" -f "description=Windows runner build and artifact upload: $outcome" -f "target_url=https://github.com/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
