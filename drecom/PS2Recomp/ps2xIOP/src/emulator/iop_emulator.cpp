@@ -624,7 +624,25 @@ namespace ps2x::iop::detail
                     write8(args + argumentSize, 0u);
                 }
             }
+            {
+                std::ostringstream out;
+                out << "[IOP MODULE INIT BEGIN] id=" << module.id
+                    << " name=" << module.name
+                    << " base=0x" << std::hex << module.base
+                    << " size=0x" << module.size
+                    << " entry=0x" << module.entry
+                    << " maxFree=" << std::dec << memory.maxFreeMemory();
+                log(LogLevel::Info, out.str());
+            }
             const uint32_t startResult = callFunction(module.entry, argumentSize, args, 0u, 0u, module.gp);
+            {
+                std::ostringstream out;
+                out << "[IOP MODULE INIT END] id=" << module.id
+                    << " name=" << module.name
+                    << " result=" << static_cast<int32_t>(startResult)
+                    << " maxFree=" << memory.maxFreeMemory();
+                log(LogLevel::Info, out.str());
+            }
             if (args)
                 freeAllocation(args);
             module.resident = startResult == 0u || startResult == 2u;

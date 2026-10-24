@@ -36,6 +36,8 @@ namespace ps2x::iop::detail
                 std::fprintf(stderr,
                     "[IOP MEMORY DEBUG] AllocSysMemory FAILED mode=%u size=%u fixed=0x%X maxFree=%u\n",
                     a0, a1, a2, m_memory.maxFreeMemory());
+                const std::string layout = m_memory.heapLayoutForDiagnostics();
+                std::fputs(layout.c_str(), stderr);
             }
             if (address != 0u)
             {
@@ -47,14 +49,25 @@ namespace ps2x::iop::detail
             return true;
         }
         case 5: // FreeSysMemory
-            setV0(m_memory.freeAllocation(a0) ? 0u : 0xFFFFFFFFu);
+        {
+            const auto block = m_memory.allocationContaining(a0);
+            const bool released = m_memory.freeAllocation(a0);
+            std::fprintf(stderr,
+                "[IOP FREE TRACE] pc=0x%X address=0x%X size=%u released=%u\n",
+                cpu.pc, a0,
+                block && block->address == a0 ? block->size : 0u,
+                released ? 1u : 0u);
+            setV0(released ? 0u : 0xFFFFFFFFu);
             return true;
+        }
         case 6: // QueryMemSize
             setV0(IopMemory::RamSize);
             return true;
         case 7: // QueryMaxFreeMemSize
-        case 8: // QueryTotalFreeMemSize
             setV0(m_memory.maxFreeMemory());
+            return true;
+        case 8: // QueryTotalFreeMemSize
+            setV0(m_memory.totalFreeMemory());
             return true;
         case 9: // QueryBlockTopAddress
             if (const auto block = m_memory.allocationContaining(a0))
