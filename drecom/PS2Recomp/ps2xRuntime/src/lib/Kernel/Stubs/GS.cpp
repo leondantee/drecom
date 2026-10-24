@@ -9,6 +9,35 @@ namespace ps2_stubs
 {
     namespace
     {
+        // DISPLAY coordinates describe video clocks and scanlines rather than
+        // raw framebuffer pixels. Keep this calculation independent of DMC.
+        struct GsScanout
+        {
+            uint64_t smode2 = 0u;
+            uint64_t display = 0u;
+        };
+
+        GsScanout makeScanout(uint32_t width, uint32_t height, uint32_t dx, uint32_t dy)
+        {
+            const uint64_t modeBits = (g_gparam.interlace & 1u) |
+                                      (static_cast<uint64_t>(g_gparam.ffmode & 1u) << 1u);
+            const bool ntsc = g_gparam.omode == 2u;
+            const bool pal = g_gparam.omode == 3u;
+            if (!ntsc && !pal)
+                return {modeBits, makeDisplay(dx, dy, 0u, 0u, width - 1u, height - 1u)};
+
+            const uint32_t clockScale = std::min(16u, (2560u + width - 1u) / width);
+            const bool interlaced = (g_gparam.interlace & 1u) != 0u;
+            const uint32_t baseX = ntsc ? 636u : 656u;
+            const uint32_t baseY = ntsc ? (interlaced ? 50u : 25u)
+                                        : (interlaced ? 72u : 36u);
+            const uint32_t rasterHeight = interlaced && (g_gparam.ffmode & 1u)
+                                              ? height * 2u : height;
+            return {modeBits, makeDisplay(baseX + dx * clockScale, baseY + dy,
+                                          clockScale - 1u, 0u,
+                                          width * clockScale - 1u, rasterHeight - 1u)};
+        }
+
         uint64_t makeClearPrim(bool useContext2)
         {
             return static_cast<uint64_t>(GS_PRIM_SPRITE) |
@@ -888,10 +917,9 @@ namespace ps2_stubs
 
         const uint32_t fbw = std::max<uint32_t>(1u, (w + 63u) / 64u);
         const uint64_t pmode = makePmode(1u, 1u, 0u, 0u, 0u, 0x80u);
-        const uint64_t smode2 =
-            (static_cast<uint64_t>(g_gparam.interlace & 0x1u) << 0) |
-            (static_cast<uint64_t>(g_gparam.ffmode & 0x1u) << 1);
-        const uint64_t display = makeDisplay(636u, 32u, 0u, 0u, w - 1u, h - 1u);
+        const GsScanout scanout = makeScanout(w, h, 0u, 0u);
+        const uint64_t smode2 = scanout.smode2;
+        const uint64_t display = scanout.display;
 
         const int32_t drawWidth = static_cast<int32_t>(w);
         const int32_t drawHeight = static_cast<int32_t>(h);
@@ -959,11 +987,10 @@ namespace ps2_stubs
 
         const uint32_t fbw = std::max<uint32_t>(1u, (w + 63u) / 64u);
         const uint64_t pmode = makePmode(1u, 1u, 0u, 0u, 0u, 0x80u);
-        const uint64_t smode2 =
-            (static_cast<uint64_t>(g_gparam.interlace & 0x1u) << 0) |
-            (static_cast<uint64_t>(g_gparam.ffmode & 0x1u) << 1);
+        const GsScanout scanout = makeScanout(w, h, 0u, 0u);
+        const uint64_t smode2 = scanout.smode2;
         const uint64_t dispfb = makeDispFb(0u, fbw, psm, 0u, 0u);
-        const uint64_t display = makeDisplay(636u, 32u, 0u, 0u, w - 1u, h - 1u);
+        const uint64_t display = scanout.display;
 
         const int32_t drawWidth = static_cast<int32_t>(w);
         const int32_t drawHeight = static_cast<int32_t>(h);
@@ -1013,7 +1040,7 @@ namespace ps2_stubs
 
         uint32_t fbw = (w + 63) / 64;
         uint64_t dispfb = makeDispFb(0, fbw, psm, 0, 0);
-        uint64_t display = makeDisplay(dx, dy, 0, 0, w - 1, h - 1);
+        uint64_t display = makeScanout(w, h, dx, dy).display;
 
         writeGsDispEnv(rdram, envAddr, display, dispfb);
         setReturnS32(ctx, 0);
