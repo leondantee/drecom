@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdlib>
 #include <functional>
 #include <string>
 #include <vector>
@@ -124,10 +125,14 @@ public:
     {
         int failedCount = 0;
         int totalTests = 0;
+        // Optional suite selector keeps CI focused without changing normal runs.
+        const char *suiteFilter = std::getenv("PS2X_TEST_SUITE");
 
         for (auto& c : m_cases)
         {
             const std::string& suiteName = c.first;
+            if (suiteFilter && *suiteFilter && suiteName != suiteFilter)
+                continue;
             const TestCaseCallback& suiteCallback = c.second;
 
             std::cout << "\n[Suite]: " << suiteName << std::endl;
