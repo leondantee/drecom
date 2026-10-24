@@ -558,6 +558,52 @@ void register_ps2_gs_tests()
             checkMode(3u, 656u, 72u); // PAL reference only
         });
 
+        tc.Run("sceGsSetDefDispEnv initializes every GS display register in NTSC and PAL", [](TestCase &t)
+        {
+            PS2Runtime runtime;
+            t.IsTrue(runtime.memory().initialize(), "runtime initialization should succeed");
+            std::vector<uint8_t> rdram(PS2_RAM_SIZE, 0u);
+            constexpr uint32_t kEnvAddr = 0x5600u;
+            constexpr uint32_t kEnvSize = 40u;
+
+            auto checkMode = [&](uint32_t videoStandard, uint32_t expectedX, uint32_t expectedY)
+            {
+                R5900Context reset{};
+                setRegU32(reset, 4, 0u);
+                setRegU32(reset, 5, 1u);
+                setRegU32(reset, 6, videoStandard);
+                setRegU32(reset, 7, 1u);
+                ps2_stubs::sceGsResetGraph(rdram.data(), &reset, &runtime);
+
+                // Poison the output so unchanged fields cannot accidentally pass.
+                std::memset(rdram.data() + kEnvAddr, 0xA5, kEnvSize);
+                R5900Context ctx{};
+                setRegU32(ctx, 4, kEnvAddr);
+                setRegU32(ctx, 5, 0u); // PSMCT32
+                setRegU32(ctx, 6, 512u);
+                setRegU32(ctx, 7, 224u);
+                setRegU32(ctx, 8, 2u); // video-clock displacement
+                setRegU32(ctx, 9, 3u); // scanline displacement
+                ps2_stubs::sceGsSetDefDispEnv(rdram.data(), &ctx, &runtime);
+                t.Equals(getRegU32Test(ctx, 2), 0u, "display env initialization succeeds");
+
+                uint64_t regs[5]{};
+                std::memcpy(regs, rdram.data() + kEnvAddr, sizeof(regs));
+                t.Equals(regs[0], 0x8007ull, "PMODE must be initialized");
+                t.Equals(regs[1], 3ull, "SMODE2 matches interlaced field mode");
+                t.Equals(regs[2], 8ull << 9u, "DISPFB has 8 pages of stride");
+                t.Equals(regs[3] & 0xFFFull, static_cast<uint64_t>(expectedX), "DISPLAY DX");
+                t.Equals((regs[3] >> 12u) & 0x7FFull, static_cast<uint64_t>(expectedY), "DISPLAY DY");
+                t.Equals((regs[3] >> 23u) & 0xFull, 4ull, "DISPLAY MAGH");
+                t.Equals((regs[3] >> 32u) & 0xFFFull, 2559ull, "DISPLAY DW");
+                t.Equals((regs[3] >> 44u) & 0x7FFull, 447ull, "DISPLAY DH");
+                t.Equals(regs[4], 0ull, "BGCOLOR initialized");
+            };
+
+            checkMode(2u, 646u, 53u); // Japanese/NTSC Trial
+            checkMode(3u, 666u, 75u); // PAL reference
+        });
+
         tc.Run("sceGsSetDefDBuffDc seeds display envs and swap applies the selected page", [](TestCase &t)
         {
             PS2Runtime runtime;
