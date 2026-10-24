@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <iostream>
 #include <sstream>
@@ -552,6 +553,49 @@ void GS::latchHostPresentationFrame()
     }
 
     const bool hasFrame = static_cast<bool>(frame);
+    // Opt-in cold-boot diagnostic: distinguish a live scanout whose content
+    // changes from a VSync loop presenting the same corrupt image forever.
+    // Keep hashing outside the GS locks and limit output to one in 120 latches.
+    static const bool traceScanout = []()
+    {
+        const char *flag = std::getenv("DRECOM_GS_TRACE");
+        return flag && *flag && *flag != '0';
+    }();
+    static std::atomic<uint64_t> traceSamples{0u};
+    static std::atomic<uint64_t> lastFrameHash{0u};
+    if (traceScanout && (traceSamples.fetch_add(1u, std::memory_order_relaxed) % 120u) == 0u)
+    {
+        uint64_t hash = 14695981039346656037ull; // FNV-1a offset
+        uint64_t coloredPixels = 0u;
+        if (hasFrame)
+            for (uint32_t y = 0u; y < frame.height; ++y)
+            {
+                const uint8_t *row = frame.pixels.data() + static_cast<size_t>(y) * kHostFrameWidth * 4u;
+                for (uint32_t x = 0u; x < frame.width; ++x)
+                {
+                    const uint8_t *rgba = row + static_cast<size_t>(x) * 4u;
+                    coloredPixels += (rgba[0] | rgba[1] | rgba[2]) != 0u ? 1u : 0u;
+                    for (uint32_t channel = 0u; channel < 4u; ++channel)
+                    {
+                        hash ^= rgba[channel];
+                        hash *= 1099511628211ull;
+                    }
+                }
+            }
+        const uint64_t previous = lastFrameHash.exchange(hash, std::memory_order_relaxed);
+        std::cout << "[DRECOM-GS] tick=" << request.vsyncTick
+                  << " valid=" << hasFrame
+                  << " size=" << frame.width << "x" << frame.height
+                  << " fbp=" << frame.displayFbp << "/" << frame.sourceFbp
+                  << " nonblack=" << coloredPixels
+                  << " changed=" << (hash != previous)
+                  << " hash=0x" << std::hex << hash
+                  << " pmode=0x" << request.pmode
+                  << " smode2=0x" << request.smode2
+                  << " display1=0x" << request.display1
+                  << " display2=0x" << request.display2
+                  << std::dec << std::endl;
+    }
     const uint32_t displayFbp = frame.displayFbp;
     const uint32_t sourceFbp = frame.sourceFbp;
     const uint32_t width = frame.width;
