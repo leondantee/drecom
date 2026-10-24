@@ -3,8 +3,7 @@ name: IOP memory regression
 on:
   push:
     branches:
-      - diagnostic/iop-allocation-failure-details
-  pull_request:
+      - main
     paths:
       - 'drecom/PS2Recomp/ps2xIOP/**'
       - '.github/workflows/iop-pr-regression.yml'
