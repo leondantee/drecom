@@ -85,3 +85,27 @@ GitHub Actions workflow `.github/workflows/iop-pr-regression.yml` builds the
 isolated IOP library, runs all IOP CTest suites, and runs the same suite with
 AddressSanitizer and UndefinedBehaviorSanitizer. Passing these checks does not
 demonstrate successful game boot.
+
+## Compatibility change (experimental; 2026-10-24)
+
+Further review of the recorded `test_allocator_fix.log` shows resident IRX
+modules being loaded below approximately `0x70000` at the moment
+`CDMODULE.IRX` initializes. The original system heap began at `0x120000`,
+leaving a large unused separation in this observed boot.
+
+The IOP memory allocator's **`HeapBase` is now `0x100000`** (1 MiB) while
+`HeapLimit` remains `0x1F0000` and `RamSize` remains 2 MiB. The IRX
+loader already enforces `base + span < HeapBase` for relocatable modules,
+so future module loads cannot silently cross the new heap boundary.
+Guest absolute-address modules and future runtime behavior still require
+validation with the original disc.
+
+The new system heap capacity is `0xF0000 = 983,040` bytes. The observed
+`CDMODULE` + `TSNDDRVM` + earlier-allocation footprint of `902,272`
+bytes now fits with **80,768 bytes left** for subsequent allocations.
+This explicitly preserves the upper call-stack area starting at `0x1F0000`.
+
+`testIopHeapCapacityScenario` now verifies both that the old heap would
+be too small and that all ten audio buffers fit with the new boundary.
+These are compatibility tests, not proof that the game boots or that this
+change is valid for every combination of IRX modules.

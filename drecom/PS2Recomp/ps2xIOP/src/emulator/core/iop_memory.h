@@ -22,7 +22,11 @@ namespace ps2x::iop::detail
         static constexpr uint32_t Spu2End = 0x1FA00000u;
         static constexpr uint32_t SifBase = 0x1D000000u;
         static constexpr uint32_t SifEnd = 0x1D001000u;
-        static constexpr uint32_t HeapBase = 0x00120000u;
+        // The IRX loader refuses to place relocatable modules across HeapBase.
+        // Start system allocations at 1 MiB to make room for CDMODULE's
+        // buffers alongside TSNDDRVM's 512 KiB top-down reservation.
+        // This does not extend the IOP RAM or overlap the upper call stacks.
+        static constexpr uint32_t HeapBase = 0x00100000u;
         static constexpr uint32_t HeapLimit = 0x001F0000u;
 
         struct Allocation
