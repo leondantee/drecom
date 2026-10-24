@@ -195,9 +195,22 @@ int main(int argc, char *argv[])
 
         PS2Runtime runtime;
 
+        // IRX modules are opened through cdrom0: via cdRoot, not cdImage.
+        // The selected guest ELF sits at the root of the extracted disc.
+        // Without this mount the loader repeatedly fails on MODHSYN.IRX.
+        auto discRoot = pathObj.parent_path();
+        if (!std::filesystem::exists(discRoot / "DATA" / "MODULES" / "MODHSYN.IRX"))
+        {
+            const auto projectExtracted = std::filesystem::path("C:/PS2Projects/drecom/Game/Extracted");
+            if (std::filesystem::exists(projectExtracted / "DATA" / "MODULES" / "MODHSYN.IRX"))
+                discRoot = projectExtracted;
+        }
+
         // Prefer the ISO next to the extracted game directory so a build can
         // run independently of the developer's hard-coded Windows paths.
         auto ioPaths = PS2Runtime::getIoPaths();
+        ioPaths.cdRoot = discRoot;
+        std::cout << "[CDVD] Extracted disc root: " << ioPaths.cdRoot << std::endl;
         const std::filesystem::path isoName = "Devil May Cry - Trial Edition (Japan).iso";
         const std::filesystem::path siblingIso = pathObj.parent_path().parent_path() / "Original" / isoName;
         const std::filesystem::path projectIso =
