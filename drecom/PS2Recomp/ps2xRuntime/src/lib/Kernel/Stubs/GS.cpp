@@ -1038,11 +1038,27 @@ namespace ps2_stubs
         if (h == 0)
             h = 448;
 
-        uint32_t fbw = (w + 63) / 64;
-        uint64_t dispfb = makeDispFb(0, fbw, psm, 0, 0);
-        uint64_t display = makeScanout(w, h, dx, dy).display;
+        const uint32_t fbw = (w + 63u) / 64u;
+        const GsScanout scanout = makeScanout(w, h, dx, dy);
 
-        writeGsDispEnv(rdram, envAddr, display, dispfb);
+        // A default display environment is a complete GS register set.
+        // Updating only DISPFB/DISPLAY leaves PMODE and SMODE2 as stale or
+        // uninitialized guest RAM, causing invalid scanout when the game
+        // later submits this environment through sceGsPutDispEnv.
+        uint8_t *dest = getMemPtr(rdram, envAddr);
+        if (!dest)
+        {
+            setReturnS32(ctx, -1);
+            return;
+        }
+
+        GsDispEnvMem env{};
+        env.pmode = makePmode(1u, 1u, 0u, 0u, 0u, 0x80u);
+        env.smode2 = scanout.smode2;
+        env.dispfb = makeDispFb(0u, fbw, psm, 0u, 0u);
+        env.display = scanout.display;
+        env.bgcolor = 0u;
+        std::memcpy(dest, &env, sizeof(env));
         setReturnS32(ctx, 0);
     }
 
