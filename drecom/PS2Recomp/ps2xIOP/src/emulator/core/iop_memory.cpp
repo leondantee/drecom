@@ -324,7 +324,8 @@ namespace ps2x::iop::detail
 
         if (fixed)
         {
-            if (fits(*fixed))
+            // Fixed-address allocations still must honor the requested alignment.
+            if ((*fixed & (alignment - 1u)) == 0u && fits(*fixed))
                 result = *fixed;
         }
         else if (fromTop)
