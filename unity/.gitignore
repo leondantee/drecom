@@ -1,0 +1,12 @@
+/Library/
+/Temp/
+/Obj/
+/Build/
+/Builds/
+/Logs/
+/UserSettings/
+/Assets/Resources/Recovered/
+/Assets/StreamingAssets/Original/
+/local-inventory.json
+*.csproj
+*.sln
