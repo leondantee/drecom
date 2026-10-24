@@ -195,9 +195,28 @@ int main(int argc, char *argv[])
 
         PS2Runtime runtime;
 
-        // Configure original PlayStation 2 disc image.
+        // Prefer the ISO next to the extracted game directory so a build can
+        // run independently of the developer's hard-coded Windows paths.
         auto ioPaths = PS2Runtime::getIoPaths();
-        ioPaths.cdImage = "C:/PS2Projects/Game/Original/Devil May Cry - Trial Edition (Japan).iso";
+        const std::filesystem::path isoName = "Devil May Cry - Trial Edition (Japan).iso";
+        const std::filesystem::path siblingIso = pathObj.parent_path().parent_path() / "Original" / isoName;
+        const std::filesystem::path projectIso =
+            "C:/PS2Projects/drecom/Game/Original/Devil May Cry - Trial Edition (Japan).iso";
+        if (std::filesystem::exists(siblingIso))
+        {
+            ioPaths.cdImage = siblingIso.string();
+        }
+        else if (std::filesystem::exists(projectIso))
+        {
+            ioPaths.cdImage = projectIso.string();
+        }
+        else
+        {
+            std::cerr << "[CDVD] ISO not found. Checked: " << siblingIso
+                      << " and " << projectIso << std::endl;
+            return 1;
+        }
+        std::cout << "[CDVD] Using ISO: " << ioPaths.cdImage << std::endl;
         PS2Runtime::setIoPaths(ioPaths);
 #if defined(PS2X_ENABLE_DEBUG_UI) && !defined(PLATFORM_VITA)
         // This hook is to prevent leak rlimgui deps to recompiler etc
