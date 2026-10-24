@@ -263,6 +263,33 @@ int main(int argc, char *argv[])
             return 1;
         }
 
+        // loadELF() resets the virtual CD root to the ELF directory.
+        // The disc's IRX modules are read as host files, not directly from
+        // cdImage. Point the CD VFS at the extracted disc content.
+        auto mountedPaths = PS2Runtime::getIoPaths();
+        const std::filesystem::path extractedByElf = pathObj.parent_path();
+        const std::filesystem::path extractedByProject =
+            "C:/PS2Projects/drecom/Game/Extracted";
+        const auto containsModules = [](const std::filesystem::path &root)
+        {
+            return std::filesystem::is_regular_file(
+                root / "DATA" / "MODULES" / "MODHSYN.IRX");
+        };
+        if (containsModules(extractedByElf))
+            mountedPaths.cdRoot = extractedByElf;
+        else if (containsModules(extractedByProject))
+            mountedPaths.cdRoot = extractedByProject;
+        else
+        {
+            std::cerr << "[CDVD] Extracted DATA/MODULES/MODHSYN.IRX missing. "
+                         "Please extract disc files next to the guest ELF."
+                      << std::endl;
+            return 1;
+        }
+        PS2Runtime::setIoPaths(mountedPaths);
+        std::cout << "[CDVD] Mounted extracted CD root: "
+                  << mountedPaths.cdRoot << std::endl;
+
         runtime.run();
 
 #ifdef _DEBUG
