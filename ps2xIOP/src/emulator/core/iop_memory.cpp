@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstring>
 #include <cstdio>
+#include <sstream>
 
 namespace ps2x::iop::detail
 {
@@ -423,6 +424,42 @@ namespace ps2x::iop::detail
         for (const auto &block : m_allocations)
             freeBytes -= block.size;
         return freeBytes;
+    }
+
+    std::string IopMemory::heapLayoutForDiagnostics() const
+    {
+        auto blocks = m_allocations;
+        std::sort(blocks.begin(), blocks.end(),
+                  [](const Allocation &a, const Allocation &b)
+                  {
+                      return a.address < b.address;
+                  });
+
+        std::ostringstream out;
+        out << "[IOP HEAP MAP] base=0x" << std::hex << HeapBase
+            << " limit=0x" << HeapLimit << std::dec
+            << " maxFree=" << maxFreeMemory()
+            << " totalFree=" << totalFreeMemory()
+            << " allocations=" << blocks.size() << '\n';
+
+        uint32_t cursor = HeapBase;
+        for (const auto &block : blocks)
+        {
+            if (block.address > cursor)
+                out << "[IOP HEAP GAP] start=0x" << std::hex << cursor
+                    << " end=0x" << block.address << std::dec
+                    << " bytes=" << (block.address - cursor) << '\n';
+
+            out << "[IOP HEAP BLOCK] start=0x" << std::hex << block.address
+                << " end=0x" << (block.address + block.size) << std::dec
+                << " bytes=" << block.size << '\n';
+            cursor = std::max(cursor, block.address + block.size);
+        }
+        if (cursor < HeapLimit)
+            out << "[IOP HEAP GAP] start=0x" << std::hex << cursor
+                << " end=0x" << HeapLimit << std::dec
+                << " bytes=" << (HeapLimit - cursor) << '\n';
+        return out.str();
     }
 
     std::optional<IopMemory::Allocation> IopMemory::allocationContaining(uint32_t address) const
