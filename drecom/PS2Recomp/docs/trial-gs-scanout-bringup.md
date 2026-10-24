@@ -65,3 +65,42 @@ or becomes playable without fresh visual evidence.
 
 Goal: moving, recognizable images from the Trial's **original** logic.
 A non-crashing window or passing C++ build alone is insufficient.
+
+
+## Follow-up — complete display environment and CI triage
+
+An additional HLE defect was confirmed in source: `sceGsSetDefDispEnv`
+previously called `writeGsDispEnv`, which only changed `DISPFB` and
+`DISPLAY` while preserving the caller's pre-existing `PMODE`,
+`SMODE2` and `BGCOLOR`. On fresh or poisoned guest memory this leaves
+a partially initialized display environment. The Trial implementation now
+writes the complete five-register structure, consistently with this
+runtime's existing double-buffer defaults. This is an internal consistency
+fix, **not** a claim of matching the original Trial SDK values byte-for-byte.
+
+- `3ad2341`: full display-environment initialization and invalid-address
+  failure reporting.
+- `5695be5`: regression using deliberately poisoned memory and separate
+  NTSC/PAL display offsets.
+- `d453e21`: repair three pre-existing scanout test assertions that assumed
+  the wrong host-output shape.
+
+The first targeted PS2GS workflow built successfully but reported
+**73 passing / 3 failing cases**, not a compiler error:
+https://github.com/leondantee/drecom/actions/runs/40140395119
+
+The two field-scanout cases indexed returned pixels using a 640-pixel row
+stride, although `copyLatchedHostPresentationFrame` explicitly returns
+tightly packed rows of `outWidth` (512 in these cases). A third legacy
+expectation checked `DISPLAY.DW=639` for a 640-pixel NTSC buffer, although
+the updated 4-clock-per-pixel layout correctly stores `DW=2559`.
+Those assertion inconsistencies are repaired in `d453e21` without changing
+the rasterizer to satisfy an incorrect test.
+
+Verification remains open until the updated runs finish and are inspected:
+- GS regressions: https://github.com/leondantee/drecom/actions/workflows/gs-scanout-regression.yml
+- Windows runner: https://github.com/leondantee/drecom/actions/workflows/game-runner-windows.yml
+
+Most importantly, neither tests nor compilation prove that the user's
+previously static window now displays valid advancing gameplay. That
+requires a new run with the local Trial assets and `DRECOM_GS_TRACE=1`.
