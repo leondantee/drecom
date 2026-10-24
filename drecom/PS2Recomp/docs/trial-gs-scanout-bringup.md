@@ -8,6 +8,11 @@ Date: 2026-10-24. Scope: **native PS2Recomp runner**, not the Unity bridge.
 - Console `[run:tick]` and `[frame:upload]` messages continue to advance.
 - Previously reported: presentation approximately 512x224, framebuffer 160.
 - A live tick counter alone is **not** proof that game state or displayed pixels advance.
+- The previously observed `pc=0x17a1d0` maps to `MappingT32_0x17a160` in
+  `Game/Recompiled/output/MappingT32_0x17a160.cpp`. It is the entry of
+  an internal mapping loop/function block, not automatically evidence of a
+  stalled VBlank or DMA wait. To diagnose a genuine stall, capture multiple
+  program counters, call context, framebuffer hashes and DMA state.
 
 ## Independently confirmed source defects
 
