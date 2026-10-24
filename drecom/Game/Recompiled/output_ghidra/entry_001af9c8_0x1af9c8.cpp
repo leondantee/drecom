@@ -1,0 +1,108 @@
+#include <stdexcept>
+#include "ps2_runtime_macros.h"
+#include "ps2_runtime.h"
+#include <ps2_recompiled_functions.h>
+#include <ps2_recompiled_stubs.h>
+
+#include "ps2_syscalls.h"
+#include "ps2_stubs.h"
+
+#ifdef PS2_FUNCTION_LOG_TRACKER
+#include "ps2_log.h"
+#endif
+
+// Function: entry_001af9c8
+// Address: 0x1af9c8 - 0x1afa28
+void entry_001af9c8_0x1af9c8(uint8_t* rdram, R5900Context* ctx, PS2Runtime *runtime) {
+#ifdef PS2_FUNCTION_LOG_TRACKER
+    PS_LOG_ENTRY("entry_001af9c8_0x1af9c8");
+#endif
+
+    ctx->pc = 0x1af9c8u;
+
+label_1af9c8:
+    // 0x1af9c8: 0xae920044  sw          $s2, 0x44($s4)
+    ctx->pc = 0x1af9c8u;
+    WRITE32(ADD32(GPR_U32(ctx, 20), 68), GPR_U32(ctx, 18));
+    // 0x1af9cc: 0x26520240  addiu       $s2, $s2, 0x240
+    ctx->pc = 0x1af9ccu;
+    SET_GPR_S32(ctx, 18, (int32_t)ADD32(GPR_U32(ctx, 18), 576));
+    // 0x1af9d0: 0x269400a0  addiu       $s4, $s4, 0xA0
+    ctx->pc = 0x1af9d0u;
+    SET_GPR_S32(ctx, 20, (int32_t)ADD32(GPR_U32(ctx, 20), 160));
+    // 0x1af9d4: 0x2631ffff  addiu       $s1, $s1, -0x1
+    ctx->pc = 0x1af9d4u;
+    SET_GPR_S32(ctx, 17, (int32_t)ADD32(GPR_U32(ctx, 17), 4294967295));
+    // 0x1af9d8: 0x1620fffb  bnez        $s1, . + 4 + (-0x5 << 2)
+    ctx->pc = 0x1AF9D8u;
+    {
+        const bool branch_taken_0x1af9d8 = (GPR_U64(ctx, 17) != GPR_U64(ctx, 0));
+        if (branch_taken_0x1af9d8) {
+            ctx->pc = 0x1AF9C8u;
+            if (runtime->eeCheckpointDue()) {
+                return;
+            }
+            goto label_1af9c8;
+        }
+    }
+    ctx->pc = 0x1AF9E0u;
+    // 0x1af9e0: 0x8ea40020  lw          $a0, 0x20($s5)
+    ctx->pc = 0x1af9e0u;
+    SET_GPR_S32(ctx, 4, (int32_t)READ32(ADD32(GPR_U32(ctx, 21), 32)));
+    // 0x1af9e4: 0x41840  sll         $v1, $a0, 1
+    ctx->pc = 0x1af9e4u;
+    SET_GPR_S32(ctx, 3, (int32_t)SLL32(GPR_U32(ctx, 4), 1));
+    // 0x1af9e8: 0x641821  addu        $v1, $v1, $a0
+    ctx->pc = 0x1af9e8u;
+    SET_GPR_S32(ctx, 3, (int32_t)ADD32(GPR_U32(ctx, 3), GPR_U32(ctx, 4)));
+    // 0x1af9ec: 0x32880  sll         $a1, $v1, 2
+    ctx->pc = 0x1af9ecu;
+    SET_GPR_S32(ctx, 5, (int32_t)SLL32(GPR_U32(ctx, 3), 2));
+    // 0x1af9f0: 0x26e40a68  addiu       $a0, $s7, 0xA68
+    ctx->pc = 0x1af9f0u;
+    SET_GPR_S32(ctx, 4, (int32_t)ADD32(GPR_U32(ctx, 23), 2664));
+    // 0x1af9f4: 0x8c830000  lw          $v1, 0x0($a0)
+    ctx->pc = 0x1af9f4u;
+    SET_GPR_S32(ctx, 3, (int32_t)READ32(ADD32(GPR_U32(ctx, 4), 0)));
+    // 0x1af9f8: 0x651821  addu        $v1, $v1, $a1
+    ctx->pc = 0x1af9f8u;
+    SET_GPR_S32(ctx, 3, (int32_t)ADD32(GPR_U32(ctx, 3), GPR_U32(ctx, 5)));
+    // 0x1af9fc: 0xac830000  sw          $v1, 0x0($a0)
+    ctx->pc = 0x1af9fcu;
+    WRITE32(ADD32(GPR_U32(ctx, 4), 0), GPR_U32(ctx, 3));
+    // 0x1afa00: 0x8ee30a68  lw          $v1, 0xA68($s7)
+    ctx->pc = 0x1afa00u;
+    SET_GPR_S32(ctx, 3, (int32_t)READ32(ADD32(GPR_U32(ctx, 23), 2664)));
+    // 0x1afa04: 0x2464000f  addiu       $a0, $v1, 0xF
+    ctx->pc = 0x1afa04u;
+    SET_GPR_S32(ctx, 4, (int32_t)ADD32(GPR_U32(ctx, 3), 15));
+    // 0x1afa08: 0x2403fff0  addiu       $v1, $zero, -0x10
+    ctx->pc = 0x1afa08u;
+    SET_GPR_S32(ctx, 3, (int32_t)ADD32(GPR_U32(ctx, 0), 4294967280));
+    // 0x1afa0c: 0x831824  and         $v1, $a0, $v1
+    ctx->pc = 0x1afa0cu;
+    SET_GPR_U64(ctx, 3, GPR_U64(ctx, 4) & GPR_U64(ctx, 3));
+    // 0x1afa10: 0xaee30a68  sw          $v1, 0xA68($s7)
+    ctx->pc = 0x1afa10u;
+    WRITE32(ADD32(GPR_U32(ctx, 23), 2664), GPR_U32(ctx, 3));
+    // 0x1afa14: 0x96c30006  lhu         $v1, 0x6($s6)
+    ctx->pc = 0x1afa14u;
+    SET_GPR_ZE32(ctx, 3, (uint16_t)READ16(ADD32(GPR_U32(ctx, 22), 6)));
+    // 0x1afa18: 0x3063ffff  andi        $v1, $v1, 0xFFFF
+    ctx->pc = 0x1afa18u;
+    SET_GPR_U64(ctx, 3, GPR_U64(ctx, 3) & (uint64_t)(uint16_t)65535);
+    // 0x1afa1c: 0x17c30002  bne         $fp, $v1, . + 4 + (0x2 << 2)
+    ctx->pc = 0x1AFA1Cu;
+    {
+        const bool branch_taken_0x1afa1c = (GPR_U64(ctx, 30) != GPR_U64(ctx, 3));
+        if (branch_taken_0x1afa1c) {
+            ctx->pc = 0x1AFA28u;
+            return;
+        }
+    }
+    ctx->pc = 0x1AFA24u;
+    // 0x1afa24: 0x26d60010  addiu       $s6, $s6, 0x10
+    ctx->pc = 0x1afa24u;
+    SET_GPR_S32(ctx, 22, (int32_t)ADD32(GPR_U32(ctx, 22), 16));
+    ctx->pc = 0x1afa28u;
+}

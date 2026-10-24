@@ -1,0 +1,45 @@
+#include <stdexcept>
+#include "ps2_runtime_macros.h"
+#include "ps2_runtime.h"
+#include <ps2_recompiled_functions.h>
+#include <ps2_recompiled_stubs.h>
+
+#include "ps2_syscalls.h"
+#include "ps2_stubs.h"
+
+#ifdef PS2_FUNCTION_LOG_TRACKER
+#include "ps2_log.h"
+#endif
+
+// Function: entry_002e1600
+// Address: 0x2e1600 - 0x2e1618
+void entry_002e1600_0x2e1600(uint8_t* rdram, R5900Context* ctx, PS2Runtime *runtime) {
+#ifdef PS2_FUNCTION_LOG_TRACKER
+    PS_LOG_ENTRY("entry_002e1600_0x2e1600");
+#endif
+
+    ctx->pc = 0x2e1600u;
+
+    // 0x2e1600: 0x3c0240a0  lui         $v0, 0x40A0
+    ctx->pc = 0x2e1600u;
+    SET_GPR_S32(ctx, 2, (int32_t)((uint32_t)16544 << 16));
+    // 0x2e1604: 0x44820000  mtc1        $v0, $f0
+    ctx->pc = 0x2e1604u;
+    { uint32_t bits = GPR_U32(ctx, 2); std::memcpy(&ctx->f[0], &bits, sizeof(bits)); }
+    // 0x2e1608: 0x0  nop
+    ctx->pc = 0x2e1608u;
+    // NOP
+    // 0x2e160c: 0xe7a00098  swc1        $f0, 0x98($sp)
+    ctx->pc = 0x2e160cu;
+    { float f = ctx->f[0]; uint32_t bits; std::memcpy(&bits, &f, sizeof(bits)); WRITE32(ADD32(GPR_U32(ctx, 29), 152), bits); }
+    // 0x2e1610: 0x10000005  b           . + 4 + (0x5 << 2)
+    ctx->pc = 0x2E1610u;
+    {
+        const bool branch_taken_0x2e1610 = (GPR_U64(ctx, 0) == GPR_U64(ctx, 0));
+        if (branch_taken_0x2e1610) {
+            ctx->pc = 0x2E1628u;
+            return;
+        }
+    }
+    ctx->pc = 0x2E1618u;
+}

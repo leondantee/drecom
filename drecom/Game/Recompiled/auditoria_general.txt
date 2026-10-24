@@ -1,0 +1,34 @@
+﻿=== ESTADO DE GIT ===
+ M ps2xIOP/src/emulator/core/iop_kernel.cpp
+ M ps2xIOP/src/emulator/imports/iop_cdvd.cpp
+ M ps2xRuntime/src/main.cpp
+ M ps2xRuntime/src/runner/register_functions.cpp
+?? ps2xIOP/src/emulator/core/iop_kernel.cpp.before_startthread_debug
+?? ps2xIOP/src/emulator/core/iop_kernel.cpp.before_thread_debug
+?? ps2xIOP/src/emulator/imports/iop_cdvd.cpp.backup_streaming
+?? ps2xIOP/src/emulator/imports/iop_cdvd.cpp.before_memory_fix
+?? ps2xIOP/src/emulator/imports/iop_cdvd.cpp.before_stinit
+?? ps2xRuntime/src/main.cpp.backup
+
+=== VERSION DEL REPOSITORIO ===
+e563698 2026-10-23 GIF: treat FLG=3 like IMAGE everywhere a GIFtag is parsed (#384)
+
+=== COMPONENTES DEL RUNTIME ===
+main.cpp
+main.cpp.backup
+
+=== IMPORTACIONES IOP SIN IMPLEMENTAR ===
+Coincidencias encontradas: 8
+C:\PS2Projects\PS2Recomp\ps2xIOP\src\ps2_path.cpp:89: // TODO maybe log an error here, but don't fail the parse. This is a non-standard device name.
+C:\PS2Projects\PS2Recomp\ps2xIOP\src\emulator\iop_emulator.cpp:354: out << "[IOP] unhandled import " << call.library << ':' << call.ordinal
+C:\PS2Projects\PS2Recomp\ps2xIOP\src\emulator\iop_emulator.cpp:605: log(LogLevel::Warning, "[IOP] one or more IRX relocations were unsupported");
+C:\PS2Projects\PS2Recomp\ps2xIOP\src\emulator\core\iop_cpu.cpp:116: // TODO kill this magic number and make it a constant somewhere
+C:\PS2Projects\PS2Recomp\ps2xIOP\src\emulator\imports\iop_cdvd.cpp:339: // sceCdSC is intentionally extensible; unsupported controls are no-ops in cdvdman.
+C:\PS2Projects\PS2Recomp\ps2xIOP\src\emulator\imports\iop_sysclib.cpp:67: case 5: // longjmp, TODO bc w can do it without the BIOS jmp_buf ABI.
+C:\PS2Projects\PS2Recomp\ps2xIOP\src\emulator\services\iop_module_loader.cpp:334: return false; // Should we log an error here? TODO check later
+C:\PS2Projects\PS2Recomp\ps2xIOP\src\emulator\services\iop_rpc.cpp:92: // TODO check later
+
+=== ULTIMOS ERRORES DEL JUEGO ===
+    + FullyQualifiedErrorId : NativeCommandError
+[ps2xIOP] [IOP printf] cdmodule: Initialize error!!
+[ps2xIOP] [IOP printf] cdmodule: CD read Thread Start Error!!

@@ -1,0 +1,4 @@
+BOOT2 = cdrom0:\SLPM_650.23;1
+VER = 1.00
+VMODE = NTSC
+
