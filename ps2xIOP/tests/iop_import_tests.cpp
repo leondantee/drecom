@@ -326,12 +326,43 @@ namespace
                expect(executor.lastGp == 0x89AB0u, "timer callback lost the registering module GP") &&
                expect(timrman.nextEventCycle(1000u) == 300u, "timer callback return did not rearm compare");
     }
+
+    bool testIopMemoryFreeSpaceAccounting()
+    {
+        IopMemory memory;
+        constexpr uint32_t capacity = IopMemory::HeapLimit - IopMemory::HeapBase;
+        if (!expect(memory.maxFreeMemory() == capacity, "initial maximum free memory is incorrect") ||
+            !expect(memory.totalFreeMemory() == capacity, "initial total free memory is incorrect"))
+            return false;
+
+        const uint32_t high = memory.allocate(0x10000u, 16u, std::nullopt, true);
+        const uint32_t low = memory.allocate(0x2000u, 16u);
+        if (!expect(high == IopMemory::HeapLimit - 0x10000u, "top allocation has wrong address") ||
+            !expect(low == IopMemory::HeapBase, "bottom allocation has wrong address") ||
+            !expect(memory.maxFreeMemory() == capacity - 0x12000u, "free gap calculation is incorrect") ||
+            !expect(memory.totalFreeMemory() == capacity - 0x12000u, "total free after allocations is incorrect"))
+            return false;
+
+        const uint32_t middle = memory.allocate(0x3000u, 16u);
+        if (!expect(middle == low + 0x2000u, "middle allocation has wrong address") ||
+            !expect(memory.freeAllocation(low), "could not release bottom allocation") ||
+            !expect(memory.totalFreeMemory() == capacity - 0x13000u, "total free after release is incorrect") ||
+            !expect(memory.maxFreeMemory() == high - (middle + 0x3000u), "largest free gap after release is incorrect"))
+            return false;
+
+        if (!expect(memory.freeAllocation(middle), "could not release middle allocation") ||
+            !expect(memory.freeAllocation(high), "could not release top allocation"))
+            return false;
+        return expect(memory.maxFreeMemory() == capacity, "maximum free after all releases is incorrect") &&
+               expect(memory.totalFreeMemory() == capacity, "total free after all releases is incorrect");
+    }
+
 }
 
 int main()
 {
     if (!testLoadcoreRebootLibraryMode() || !testCdvdSpecialControl() || !testCdvdSearchFile() ||
-        !testTimrmanPeriodicCallback())
+        !testTimrmanPeriodicCallback() || !testIopMemoryFreeSpaceAccounting())
         return 1;
     std::cout << "ps2xIOP import tests passed\n";
     return 0;
