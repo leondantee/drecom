@@ -33,9 +33,17 @@ namespace ps2x::iop::detail
                                          : m_memory.allocate(a1, 16u, std::nullopt, a0 == 1u);
             if (address == 0u)
             {
+                const uint32_t maxFree = m_memory.maxFreeMemory();
+                const uint32_t totalFree = m_memory.totalFreeMemory();
+                const uint64_t requested = (static_cast<uint64_t>(a1) + 15u) & ~uint64_t{15u};
+                const char *reason = a0 == 2u ? "fixed-address-unavailable"
+                    : requested > totalFree ? "insufficient-total-free"
+                    : requested > maxFree ? "fragmentation"
+                    : "allocation-placement-or-alignment";
                 std::fprintf(stderr,
-                    "[IOP MEMORY DEBUG] AllocSysMemory FAILED mode=%u size=%u fixed=0x%X maxFree=%u\n",
-                    a0, a1, a2, m_memory.maxFreeMemory());
+                    "[IOP MEMORY DEBUG] AllocSysMemory FAILED pc=0x%X mode=%u size=%u aligned=%llu fixed=0x%X maxFree=%u totalFree=%u reason=%s\n",
+                    cpu.pc, a0, a1, static_cast<unsigned long long>(requested),
+                    a2, maxFree, totalFree, reason);
                 const std::string layout = m_memory.heapLayoutForDiagnostics();
                 std::fputs(layout.c_str(), stderr);
             }
