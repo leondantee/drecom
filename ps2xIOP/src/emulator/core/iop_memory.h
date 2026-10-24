@@ -59,6 +59,7 @@ namespace ps2x::iop::detail
         [[nodiscard]] bool freeAllocation(uint32_t address);
         [[nodiscard]] uint32_t maxFreeMemory() const;
         [[nodiscard]] uint32_t totalFreeMemory() const;
+        [[nodiscard]] std::string heapLayoutForDiagnostics() const;
         [[nodiscard]] std::optional<Allocation> allocationContaining(uint32_t address) const;
 
         [[nodiscard]] uint32_t interruptStatus() const noexcept { return m_interruptStatus; }
