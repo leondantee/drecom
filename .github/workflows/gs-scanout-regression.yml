@@ -1,0 +1,54 @@
+name: GS scanout regression
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'drecom/PS2Recomp/ps2xRuntime/src/lib/Kernel/Stubs/GS.cpp'
+      - 'drecom/PS2Recomp/ps2xRuntime/src/lib/gs/gs_cpu_backend.cpp'
+      - 'drecom/PS2Recomp/ps2xTest/src/ps2_gs_tests.cpp'
+      - 'drecom/PS2Recomp/ps2xTest/include/MiniTest.h'
+      - '.github/workflows/gs-scanout-regression.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gs-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libgl-dev libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev pkg-config
+
+      - name: Configure runtime and PS2GS tests
+        run: |
+          cmake -S drecom/PS2Recomp -B build-gs -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_FLAGS=-msse4.1 -DCMAKE_CXX_FLAGS=-msse4.1 \
+            -DPS2X_BUILD_RECOMP=ON -DPS2X_BUILD_ANALYZER=ON \
+            -DPS2X_BUILD_RUNTIME=ON -DPS2X_BUILD_TEST=ON \
+            -DPS2X_BUILD_STUDIO=OFF -DPS2X_ENABLE_FFMPEG=OFF
+
+      - name: Compile PS2GS test suite
+        run: cmake --build build-gs --target ps2x_tests --parallel 2
+
+      - name: Run only PS2GS suite
+        env:
+          PS2X_TEST_SUITE: PS2GS
+        run: |
+          set -o pipefail
+          ./build-gs/ps2xTest/ps2x_tests 2>&1 | tee gs-tests.log
+
+      - name: Save test transcript
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: gs-scanout-regression-log
+          path: gs-tests.log
+          if-no-files-found: ignore
