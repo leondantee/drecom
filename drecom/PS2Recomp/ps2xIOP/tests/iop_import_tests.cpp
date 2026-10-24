@@ -327,6 +327,30 @@ namespace
                expect(timrman.nextEventCycle(1000u) == 300u, "timer callback return did not rearm compare");
     }
 
+    bool testIopOversizedAllocations()
+    {
+        IopMemory memory;
+        constexpr uint32_t capacity = IopMemory::HeapLimit - IopMemory::HeapBase;
+        // Regression: 0xFFFFFFFF used to wrap to zero when rounded to 16.
+        if (!expect(memory.allocate(0xFFFFFFFFu) == 0u,
+                    "oversized request wrapped to a successful allocation") ||
+            !expect(memory.allocate(0xFFFFFFF1u) == 0u,
+                    "near-overflow request wrapped to a successful allocation") ||
+            !expect(memory.allocate(capacity + 1u) == 0u,
+                    "out-of-range request unexpectedly succeeded") ||
+            !expect(memory.allocate(16u, 3u) == 0u,
+                    "non-power-of-two alignment unexpectedly succeeded") ||
+            !expect(memory.totalFreeMemory() == capacity,
+                    "failed allocations consumed heap memory"))
+            return false;
+
+        const uint32_t normal = memory.allocate(16u);
+        return expect(normal == IopMemory::HeapBase,
+                      "valid allocation failed after rejected invalid requests") &&
+               expect(memory.freeAllocation(normal),
+                      "valid allocation could not be released");
+    }
+
     bool testIopFreeMemoryQueries()
     {
         IopMemory memory;
@@ -367,7 +391,8 @@ namespace
 int main()
 {
     if (!testLoadcoreRebootLibraryMode() || !testCdvdSpecialControl() || !testCdvdSearchFile() ||
-        !testTimrmanPeriodicCallback() || !testIopFreeMemoryQueries())
+        !testTimrmanPeriodicCallback() || !testIopFreeMemoryQueries() ||
+        !testIopOversizedAllocations())
         return 1;
     std::cout << "ps2xIOP import tests passed\n";
     return 0;
