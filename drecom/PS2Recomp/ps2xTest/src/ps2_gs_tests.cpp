@@ -518,6 +518,46 @@ void register_ps2_gs_tests()
                      "GsSetCrt should return success");
         });
 
+        tc.Run("GS HLE uses NTSC and PAL scanout geometry for 512x224", [](TestCase &t)
+        {
+            PS2Runtime runtime;
+            t.IsTrue(runtime.memory().initialize(), "runtime initialization should succeed");
+            std::vector<uint8_t> rdram(PS2_RAM_SIZE, 0u);
+            constexpr uint32_t kEnvAddr = 0x5000u;
+            constexpr uint32_t kDisplayOffset = 24u;
+
+            auto checkMode = [&](uint32_t videoStandard, uint32_t expectedDx, uint32_t expectedDy)
+            {
+                R5900Context reset{};
+                setRegU32(reset, 4, 0u);
+                setRegU32(reset, 5, 1u);
+                setRegU32(reset, 6, videoStandard);
+                setRegU32(reset, 7, 1u);
+                ps2_stubs::sceGsResetGraph(rdram.data(), &reset, &runtime);
+
+                R5900Context ctx{};
+                setRegU32(ctx, 4, kEnvAddr);
+                setRegU32(ctx, 5, 0u);
+                setRegU32(ctx, 6, 512u);
+                setRegU32(ctx, 7, 224u);
+                ps2_stubs::sceGsSetDefDBuffDc(rdram.data(), &ctx, &runtime);
+                uint64_t display = 0u;
+                uint64_t smode2 = 0u;
+                std::memcpy(&display, rdram.data() + kEnvAddr + kDisplayOffset, sizeof(display));
+                std::memcpy(&smode2, rdram.data() + kEnvAddr + 8u, sizeof(smode2));
+
+                t.Equals(display & 0x0FFFull, static_cast<uint64_t>(expectedDx), "scanout DX origin");
+                t.Equals((display >> 12u) & 0x07FFull, static_cast<uint64_t>(expectedDy), "scanout DY origin");
+                t.Equals((display >> 23u) & 0x0Full, 4ull, "512 pixels require MAGH=4");
+                t.Equals((display >> 32u) & 0x0FFFull, 2559ull, "512 pixels cover 2560 clocks");
+                t.Equals((display >> 44u) & 0x07FFull, 447ull, "224 rows occupy 448 raster lines");
+                t.Equals(smode2 & 3ull, 3ull, "interlaced field scanout should set INT and FFMD");
+            };
+
+            checkMode(2u, 636u, 50u); // Japanese/NTSC
+            checkMode(3u, 656u, 72u); // PAL reference only
+        });
+
         tc.Run("sceGsSetDefDBuffDc seeds display envs and swap applies the selected page", [](TestCase &t)
         {
             PS2Runtime runtime;
@@ -534,6 +574,14 @@ void register_ps2_gs_tests()
             constexpr uint32_t kFrame1AddrOffset = kDraw01Offset + 0x08u;
             constexpr uint32_t kXYOffset1Offset = kDraw01Offset + 0x20u;
             constexpr uint32_t kXYOffset1AddrOffset = kDraw01Offset + 0x28u;
+
+            // Make the test independent of the video mode used by prior cases.
+            R5900Context videoMode{};
+            setRegU32(videoMode, 4, 0u);
+            setRegU32(videoMode, 5, 1u); // interlaced
+            setRegU32(videoMode, 6, 2u); // NTSC
+            setRegU32(videoMode, 7, 0u); // 1 buffer row per raster line
+            ps2_stubs::sceGsResetGraph(rdram.data(), &videoMode, &runtime);
 
             R5900Context ctx{};
             setRegU32(ctx, 4, kEnvAddr);
@@ -557,7 +605,9 @@ void register_ps2_gs_tests()
             std::memcpy(&xyoffset10Addr, rdram.data() + kEnvAddr + kXYOffset1AddrOffset, sizeof(xyoffset10Addr));
 
             t.Equals((dispfb0 >> 9) & 0x3Fu, 10ull, "dbuff display env should seed FBW from width");
-            t.Equals((display0 >> 32) & 0x0FFFull, 639ull, "dbuff display env should seed DW from width");
+            t.Equals((display0 >> 32) & 0x0FFFull, 2559ull, "NTSC display DW is video clocks, not framebuffer pixels");
+            t.Equals((display0 >> 23) & 0x0Full, 3ull, "640-pixel NTSC mode needs MAGH=3");
+            t.Equals(display0 & 0x0FFFull, 636ull, "NTSC display DX should use video-standard origin");
             t.Equals((display0 >> 44) & 0x07FFull, 447ull, "dbuff display env should seed DH from height");
             t.Equals((frame10 >> 16) & 0x3Full, 10ull, "dbuff draw env should seed FRAME FBW from width");
             t.Equals(frame10Addr, 0x4Cull, "dbuff draw env should seed FRAME_1 register id");
