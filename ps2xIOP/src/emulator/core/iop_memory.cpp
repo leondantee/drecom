@@ -397,7 +397,32 @@ namespace ps2x::iop::detail
 
     uint32_t IopMemory::maxFreeMemory() const
     {
-        return m_heapCursor < HeapLimit ? HeapLimit - m_heapCursor : 0u;
+        auto blocks = m_allocations;
+        std::sort(blocks.begin(), blocks.end(),
+                  [](const Allocation &a, const Allocation &b)
+                  {
+                      return a.address < b.address;
+                  });
+
+        uint32_t cursor = HeapBase;
+        uint32_t largest = 0u;
+        for (const auto &block : blocks)
+        {
+            if (block.address > cursor)
+                largest = std::max(largest, block.address - cursor);
+            cursor = std::max(cursor, block.address + block.size);
+        }
+        if (cursor < HeapLimit)
+            largest = std::max(largest, HeapLimit - cursor);
+        return largest;
+    }
+
+    uint32_t IopMemory::totalFreeMemory() const
+    {
+        uint32_t used = 0u;
+        for (const auto &block : m_allocations)
+            used += block.size;
+        return (HeapLimit - HeapBase) - used;
     }
 
     std::optional<IopMemory::Allocation> IopMemory::allocationContaining(uint32_t address) const
