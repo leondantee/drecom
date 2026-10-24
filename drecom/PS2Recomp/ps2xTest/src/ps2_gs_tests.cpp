@@ -675,7 +675,7 @@ void register_ps2_gs_tests()
 
             t.Equals(runtime.memory().gs().dispfb1 & 0x1FFull, 151ull,
                      "sceGsSwapDBuffDc should program GS to the selected display page");
-            t.Equals((runtime.memory().gs().display1 >> 32) & 0x0FFFull, 639ull,
+            t.Equals((runtime.memory().gs().display1 >> 32) & 0x0FFFull, 2559ull,
                      "sceGsSwapDBuffDc should preserve the display width from the seeded env");
         });
 
@@ -1800,7 +1800,7 @@ void register_ps2_gs_tests()
             t.Equals(height, 448u, "224 source rows produce 448 scanout lines");
             auto redBlueAt = [&](uint32_t y) -> uint32_t
             {
-                const size_t off = static_cast<size_t>(y) * 640u * 4u;
+                const size_t off = static_cast<size_t>(y) * width * 4u;
                 return static_cast<uint32_t>(frame[off + 0u]) |
                        (static_cast<uint32_t>(frame[off + 2u]) << 16u);
             };
@@ -1837,7 +1837,7 @@ void register_ps2_gs_tests()
             t.Equals(height, 448u, "CRT2 provides 448-line raster");
             auto redBlueAt = [&](uint32_t y) -> uint32_t
             {
-                const size_t off = static_cast<size_t>(y) * 640u * 4u;
+                const size_t off = static_cast<size_t>(y) * width * 4u;
                 return static_cast<uint32_t>(frame[off]) |
                        (static_cast<uint32_t>(frame[off + 2u]) << 16u);
             };
