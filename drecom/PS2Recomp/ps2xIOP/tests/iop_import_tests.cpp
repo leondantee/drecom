@@ -338,7 +338,7 @@ namespace
                     "near-overflow request wrapped to a successful allocation") ||
             !expect(memory.allocate(capacity + 1u) == 0u,
                     "out-of-range request unexpectedly succeeded") ||
-            !expect(memory.allocate(16u, 3u) == 0u,
+            !expect(memory.allocate(16u, 6u) == 0u,
                     "non-power-of-two alignment unexpectedly succeeded") ||
             !expect(memory.totalFreeMemory() == capacity,
                     "failed allocations consumed heap memory"))
