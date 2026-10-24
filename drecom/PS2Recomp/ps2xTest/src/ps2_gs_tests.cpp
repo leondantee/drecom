@@ -1778,7 +1778,8 @@ void register_ps2_gs_tests()
                             (2559ull << 32) | (447ull << 44);
             GS gs;
             gs.init(vram.data(), static_cast<uint32_t>(vram.size()), &regs);
-            writeReferencePSMCT32Pixel(vram, 160u, 8u, 0u, 0u, 0xFF0000FFu);
+            // The test writer takes a 256-byte GS block, DISPFB takes an 8 KiB page.
+            writeReferencePSMCT32Pixel(vram, 160u * 32u, 8u, 0u, 0u, 0xFF0000FFu);
             writeReferencePSMCT32Pixel(vram, 0u, 8u, 0u, 0u, 0xFFFF0000u);
             gs.latchHostPresentationFrame();
 
