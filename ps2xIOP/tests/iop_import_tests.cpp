@@ -326,12 +326,48 @@ namespace
                expect(executor.lastGp == 0x89AB0u, "timer callback lost the registering module GP") &&
                expect(timrman.nextEventCycle(1000u) == 300u, "timer callback return did not rearm compare");
     }
+
+    bool testIopFreeMemoryQueries()
+    {
+        IopMemory memory;
+        constexpr uint32_t capacity = IopMemory::HeapLimit - IopMemory::HeapBase;
+        if (!expect(memory.maxFreeMemory() == capacity, "incorrect initial maximum free block") ||
+            !expect(memory.totalFreeMemory() == capacity, "incorrect initial total free memory"))
+            return false;
+
+        const uint32_t top = memory.allocate(0x10000u, 16u, std::nullopt, true);
+        const uint32_t lower = memory.allocate(0x4000u, 16u);
+        const uint32_t middle = memory.allocate(0x4000u, 16u);
+
+        if (!expect(top == IopMemory::HeapLimit - 0x10000u, "top allocation failed") ||
+            !expect(lower == IopMemory::HeapBase, "lower allocation failed") ||
+            !expect(middle == lower + 0x4000u, "middle allocation failed") ||
+            !expect(memory.totalFreeMemory() == capacity - 0x18000u, "incorrect total after allocation"))
+            return false;
+
+        if (!expect(memory.freeAllocation(lower), "failed to free lower block"))
+            return false;
+
+        const uint32_t expectedLargest = top - (middle + 0x4000u);
+        if (!expect(memory.maxFreeMemory() == expectedLargest, "largest free gap incorrect") ||
+            !expect(memory.totalFreeMemory() == capacity - 0x14000u, "total free gap incorrect") ||
+            !expect(memory.totalFreeMemory() > memory.maxFreeMemory(), "fragmentation not reflected"))
+            return false;
+
+        if (!expect(memory.freeAllocation(middle), "failed to free middle block") ||
+            !expect(memory.freeAllocation(top), "failed to free upper block"))
+            return false;
+
+        return expect(memory.maxFreeMemory() == capacity, "maximum free memory did not recover") &&
+               expect(memory.totalFreeMemory() == capacity, "total free memory did not recover");
+    }
+
 }
 
 int main()
 {
     if (!testLoadcoreRebootLibraryMode() || !testCdvdSpecialControl() || !testCdvdSearchFile() ||
-        !testTimrmanPeriodicCallback())
+        !testTimrmanPeriodicCallback() || !testIopFreeMemoryQueries())
         return 1;
     std::cout << "ps2xIOP import tests passed\n";
     return 0;
