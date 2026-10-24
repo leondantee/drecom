@@ -36,6 +36,8 @@ namespace ps2x::iop::detail
                 std::fprintf(stderr,
                     "[IOP MEMORY DEBUG] AllocSysMemory FAILED mode=%u size=%u fixed=0x%X maxFree=%u\n",
                     a0, a1, a2, m_memory.maxFreeMemory());
+                const std::string layout = m_memory.heapLayoutForDiagnostics();
+                std::fputs(layout.c_str(), stderr);
             }
             if (address != 0u)
             {
