@@ -340,6 +340,8 @@ namespace
                     "out-of-range request unexpectedly succeeded") ||
             !expect(memory.allocate(16u, 6u) == 0u,
                     "non-power-of-two alignment unexpectedly succeeded") ||
+            !expect(memory.allocate(16u, 16u, IopMemory::HeapBase + 4u) == 0u,
+                    "unaligned fixed-address allocation unexpectedly succeeded") ||
             !expect(memory.totalFreeMemory() == capacity,
                     "failed allocations consumed heap memory"))
             return false;
