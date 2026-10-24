@@ -1,0 +1,24 @@
+name: IOP memory regression
+
+on:
+  push:
+    branches:
+      - diagnostic/iop-allocation-failure-details
+  pull_request:
+    paths:
+      - 'drecom/PS2Recomp/ps2xIOP/**'
+      - '.github/workflows/iop-pr-regression.yml'
+  workflow_dispatch:
+
+jobs:
+  iop-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure isolated IOP tests
+        run: cmake -S drecom/PS2Recomp/ps2xIOP -B build-iop -G Ninja -DPS2X_IOP_BUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Debug
+      - name: Build isolated IOP tests
+        run: cmake --build build-iop --parallel 2
+      - name: Run IOP tests
+        run: ctest --test-dir build-iop --output-on-failure
