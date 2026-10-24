@@ -195,15 +195,31 @@ int main(int argc, char *argv[])
 
         PS2Runtime runtime;
 
-        // IRX modules are opened through cdrom0: via cdRoot, not cdImage.
-        // The selected guest ELF sits at the root of the extracted disc.
-        // Without this mount the loader repeatedly fails on MODHSYN.IRX.
-        auto discRoot = pathObj.parent_path();
-        if (!std::filesystem::exists(discRoot / "DATA" / "MODULES" / "MODHSYN.IRX"))
+        // IRX modules are opened as extracted host files through cdrom0:.
+        // A configurable root permits running the same build on other PCs.
+        const auto containsModules = [](const std::filesystem::path &root)
         {
-            const auto projectExtracted = std::filesystem::path("C:/PS2Projects/drecom/Game/Extracted");
-            if (std::filesystem::exists(projectExtracted / "DATA" / "MODULES" / "MODHSYN.IRX"))
+            return std::filesystem::is_regular_file(
+                root / "DATA" / "MODULES" / "MODHSYN.IRX");
+        };
+        std::filesystem::path discRoot = pathObj.parent_path();
+        if (const char *rootOverride = std::getenv("DRECOM_EXTRACTED_DIR");
+            rootOverride && *rootOverride)
+        {
+            discRoot = std::filesystem::path(rootOverride);
+        }
+        else if (!containsModules(discRoot))
+        {
+            const auto projectExtracted =
+                std::filesystem::path("C:/PS2Projects/drecom/Game/Extracted");
+            if (containsModules(projectExtracted))
                 discRoot = projectExtracted;
+        }
+        if (!containsModules(discRoot))
+        {
+            std::cerr << "[CDVD] Missing DATA/MODULES/MODHSYN.IRX under "
+                      << discRoot << std::endl;
+            return 1;
         }
 
         // Prefer the ISO next to the extracted game directory so a build can
@@ -267,25 +283,10 @@ int main(int argc, char *argv[])
         // The disc's IRX modules are read as host files, not directly from
         // cdImage. Point the CD VFS at the extracted disc content.
         auto mountedPaths = PS2Runtime::getIoPaths();
-        const std::filesystem::path extractedByElf = pathObj.parent_path();
-        const std::filesystem::path extractedByProject =
-            "C:/PS2Projects/drecom/Game/Extracted";
-        const auto containsModules = [](const std::filesystem::path &root)
-        {
-            return std::filesystem::is_regular_file(
-                root / "DATA" / "MODULES" / "MODHSYN.IRX");
-        };
-        if (containsModules(extractedByElf))
-            mountedPaths.cdRoot = extractedByElf;
-        else if (containsModules(extractedByProject))
-            mountedPaths.cdRoot = extractedByProject;
-        else
-        {
-            std::cerr << "[CDVD] Extracted DATA/MODULES/MODHSYN.IRX missing. "
-                         "Please extract disc files next to the guest ELF."
-                      << std::endl;
-            return 1;
-        }
+        mountedPaths.cdRoot = discRoot;
+        // Preserve the ISO selection made before loadELF(), even if loading
+        // resets the runtime's IO paths.
+        mountedPaths.cdImage = ioPaths.cdImage;
         PS2Runtime::setIoPaths(mountedPaths);
         std::cout << "[CDVD] Mounted extracted CD root: "
                   << mountedPaths.cdRoot << std::endl;
