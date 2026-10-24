@@ -462,6 +462,15 @@ else()
     )
 endif()
 
+# Game-specific generated headers are not shipped with the generic toolchain.
+# Keep the runner target available for explicit local builds, but do not
+# require it in default CI builds until the generated sources are present.
+if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/include/ps2_recompiled_functions.h" OR
+   NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/include/ps2_recompiled_stubs.h")
+    set_target_properties(ps2EntryRunner PROPERTIES EXCLUDE_FROM_ALL TRUE)
+    message(STATUS "ps2EntryRunner excluded from ALL: game-specific generated headers are missing")
+endif()
+
 if(PS2X_ENABLE_RUNNER_UNITY_BUILD)
     set_target_properties(ps2EntryRunner PROPERTIES
         UNITY_BUILD ON
