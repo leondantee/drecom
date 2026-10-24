@@ -417,6 +417,14 @@ namespace ps2x::iop::detail
         return largest;
     }
 
+    uint32_t IopMemory::totalFreeMemory() const
+    {
+        uint32_t freeBytes = HeapLimit - HeapBase;
+        for (const auto &block : m_allocations)
+            freeBytes -= block.size;
+        return freeBytes;
+    }
+
     std::optional<IopMemory::Allocation> IopMemory::allocationContaining(uint32_t address) const
     {
         const auto block = std::find_if(m_allocations.begin(), m_allocations.end(),
