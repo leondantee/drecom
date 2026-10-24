@@ -49,8 +49,17 @@ namespace ps2x::iop::detail
             return true;
         }
         case 5: // FreeSysMemory
-            setV0(m_memory.freeAllocation(a0) ? 0u : 0xFFFFFFFFu);
+        {
+            const auto block = m_memory.allocationContaining(a0);
+            const bool released = m_memory.freeAllocation(a0);
+            std::fprintf(stderr,
+                "[IOP FREE TRACE] pc=0x%X address=0x%X size=%u released=%u\n",
+                cpu.pc, a0,
+                block && block->address == a0 ? block->size : 0u,
+                released ? 1u : 0u);
+            setV0(released ? 0u : 0xFFFFFFFFu);
             return true;
+        }
         case 6: // QueryMemSize
             setV0(IopMemory::RamSize);
             return true;
