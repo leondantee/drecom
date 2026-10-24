@@ -1731,6 +1731,73 @@ void register_ps2_gs_tests()
                      "single-circuit presentation should normalize the last row alpha");
         });
 
+        tc.Run("interlaced INT+FFMD scanout reads 224 field rows for 448 lines", [](TestCase &t)
+        {
+            std::vector<uint8_t> vram(PS2_GS_VRAM_SIZE, 0u);
+            GSRegisters regs{};
+            regs.pmode = 1ull;
+            regs.smode2 = 3ull;
+            regs.dispfb1 = (8ull << 9) | (static_cast<uint64_t>(GS_PSM_CT32) << 15);
+            regs.display1 = 636ull | (50ull << 12) | (4ull << 23) |
+                            (2559ull << 32) | (447ull << 44);
+            GS gs;
+            gs.init(vram.data(), static_cast<uint32_t>(vram.size()), &regs);
+            writeReferencePSMCT32Pixel(vram, 0u, 8u, 0u, 0u, 0xFF0000FFu);
+            writeReferencePSMCT32Pixel(vram, 0u, 8u, 0u, 223u, 0xFFFF0000u);
+            gs.latchHostPresentationFrame();
+
+            std::vector<uint8_t> frame;
+            uint32_t width = 0u, height = 0u;
+            t.IsTrue(gs.copyLatchedHostPresentationFrame(frame, width, height),
+                     "field-mode frame must be presentable");
+            t.Equals(width, 512u, "scanout preserves 512 source pixels");
+            t.Equals(height, 448u, "224 source rows produce 448 scanout lines");
+            auto redBlueAt = [&](uint32_t y) -> uint32_t
+            {
+                const size_t off = static_cast<size_t>(y) * 640u * 4u;
+                return static_cast<uint32_t>(frame[off + 0u]) |
+                       (static_cast<uint32_t>(frame[off + 2u]) << 16u);
+            };
+            t.Equals(redBlueAt(0u), 0x000000FFu, "first field row survives");
+            t.Equals(redBlueAt(1u), 0x000000FFu, "first field row repeated");
+            t.Equals(redBlueAt(446u), 0x00FF0000u, "last field row survives");
+            t.Equals(redBlueAt(447u), 0x00FF0000u, "last field row repeated");
+        });
+
+        tc.Run("dual GS circuits respect relative DISPLAY vertical origin", [](TestCase &t)
+        {
+            std::vector<uint8_t> vram(PS2_GS_VRAM_SIZE, 0u);
+            GSRegisters regs{};
+            regs.pmode = 3ull | (1ull << 5) | (255ull << 8);
+            regs.smode2 = 3ull;
+            regs.dispfb1 = 160ull | (8ull << 9) | (static_cast<uint64_t>(GS_PSM_CT32) << 15);
+            regs.dispfb2 = (8ull << 9) | (static_cast<uint64_t>(GS_PSM_CT32) << 15);
+            regs.display1 = 636ull | (150ull << 12) | (4ull << 23) |
+                            (2559ull << 32) | (63ull << 44);
+            regs.display2 = 636ull | (50ull << 12) | (4ull << 23) |
+                            (2559ull << 32) | (447ull << 44);
+            GS gs;
+            gs.init(vram.data(), static_cast<uint32_t>(vram.size()), &regs);
+            writeReferencePSMCT32Pixel(vram, 160u, 8u, 0u, 0u, 0xFF0000FFu);
+            writeReferencePSMCT32Pixel(vram, 0u, 8u, 0u, 0u, 0xFFFF0000u);
+            gs.latchHostPresentationFrame();
+
+            std::vector<uint8_t> frame;
+            uint32_t width = 0u, height = 0u;
+            t.IsTrue(gs.copyLatchedHostPresentationFrame(frame, width, height),
+                     "dual-circuit output must be presentable");
+            t.Equals(width, 512u, "dual circuits cover 512 pixels");
+            t.Equals(height, 448u, "CRT2 provides 448-line raster");
+            auto redBlueAt = [&](uint32_t y) -> uint32_t
+            {
+                const size_t off = static_cast<size_t>(y) * 640u * 4u;
+                return static_cast<uint32_t>(frame[off]) |
+                       (static_cast<uint32_t>(frame[off + 2u]) << 16u);
+            };
+            t.Equals(redBlueAt(0u), 0x00FF0000u, "CRT1 must not cover CRT2 at row zero");
+            t.Equals(redBlueAt(100u), 0x000000FFu, "CRT1 begins at its DISPLAY.DY offset");
+        });
+
         tc.Run("latched host presentation line-doubles interlaced field output", [](TestCase &t)
         {
             std::vector<uint8_t> vram(PS2_GS_VRAM_SIZE, 0u);
