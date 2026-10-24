@@ -327,6 +327,46 @@ namespace
                expect(timrman.nextEventCycle(1000u) == 300u, "timer callback return did not rearm compare");
     }
 
+    bool testIopHeapCapacityScenario()
+    {
+        // Reproduce the *footprint* from an observed CDMODULE.IRX startup trace.
+        // The 0xC480 initial reservation is a packed surrogate for pre-existing
+        // allocations, not an assertion about their actual number or ownership.
+        IopMemory memory;
+        constexpr uint32_t prior = 0xC480u;
+        constexpr uint32_t tsnddrvm = 0x80000u;
+        constexpr uint32_t stream = 0x28000u;
+        constexpr uint32_t small = 0x4000u;
+        constexpr uint32_t capacity = IopMemory::HeapLimit - IopMemory::HeapBase;
+        constexpr uint32_t required = prior + tsnddrvm + stream + 10u * small;
+        static_assert(required - capacity == 0xC480u,
+                      "traced initialization should exceed the configured heap by 50304 bytes");
+
+        if (!expect(memory.allocate(prior) == IopMemory::HeapBase,
+                    "cannot reproduce packed prior reservations") ||
+            !expect(memory.allocate(tsnddrvm, 16u, std::nullopt, true) == 0x170000u,
+                    "top-down TSNDDRVM reserve diverged from trace") ||
+            !expect(memory.allocate(stream) == 0x12C480u,
+                    "CDMODULE streaming allocation diverged from trace"))
+            return false;
+
+        for (uint32_t i = 0; i < 6u; ++i)
+        {
+            if (!expect(memory.allocate(small) == 0x154480u + i * small,
+                        "CDMODULE buffer allocation diverged from trace"))
+                return false;
+        }
+
+        return expect(memory.maxFreeMemory() == 0x3B80u,
+                      "largest free block differs from observed 15232 bytes") &&
+               expect(memory.totalFreeMemory() == 0x3B80u,
+                      "trace footprint should have zero fragmentation") &&
+               expect(memory.allocate(small) == 0u,
+                      "seventh 16 KiB buffer should fail in exhausted heap") &&
+               expect(memory.totalFreeMemory() == 0x3B80u,
+                      "rejected allocation changed heap accounting");
+    }
+
     bool testIopOversizedAllocations()
     {
         IopMemory memory;
@@ -394,7 +434,7 @@ int main()
 {
     if (!testLoadcoreRebootLibraryMode() || !testCdvdSpecialControl() || !testCdvdSearchFile() ||
         !testTimrmanPeriodicCallback() || !testIopFreeMemoryQueries() ||
-        !testIopOversizedAllocations())
+        !testIopOversizedAllocations() || !testIopHeapCapacityScenario())
         return 1;
     std::cout << "ps2xIOP import tests passed\n";
     return 0;
