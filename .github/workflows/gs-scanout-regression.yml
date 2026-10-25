@@ -6,6 +6,7 @@ on:
     paths:
       - 'drecom/PS2Recomp/ps2xRuntime/src/lib/Kernel/Stubs/GS.cpp'
       - 'drecom/PS2Recomp/ps2xRuntime/src/lib/gs/gs_cpu_backend.cpp'
+      - 'drecom/PS2Recomp/ps2xRuntime/src/lib/gs/gs_frontend.cpp'
       - 'drecom/PS2Recomp/ps2xTest/src/ps2_gs_tests.cpp'
       - 'drecom/PS2Recomp/ps2xTest/include/MiniTest.h'
       - '.github/workflows/gs-scanout-regression.yml'
