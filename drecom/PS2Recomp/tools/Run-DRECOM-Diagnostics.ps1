@@ -77,7 +77,8 @@ Write-Host "Guest ELF: $GuestElf"
 Write-Host "Extracted root: $ExtractedRoot"
 Write-Host "Log: $log"
 Write-Host "Close the game window or press Ctrl+C to stop."
-Write-Host "Look for [DRECOM-GS] frameChanges120 and registerChanges120."
+Write-Host "Look for [DRECOM-GS] frameChanges120, registerChanges120 and vramChanged."
+Write-Host "The last GS samples will be summarized when the runner exits."
 Write-Host ""
 
 # Keep ordinary runtime output visible while saving a durable trace.
@@ -88,4 +89,20 @@ try {
 } finally {
     Write-Host ""
     Write-Host "Diagnostic log (local only): $log" -ForegroundColor Cyan
+    if (Test-Path -LiteralPath $log -PathType Leaf) {
+        # The full log stays private on this PC. Show just the latest GS
+        # samples so a scrolling runtime trace cannot hide the diagnosis.
+        $samples = @(Select-String -LiteralPath $log -Pattern '\[DRECOM-GS\]' |
+            Select-Object -Last 4)
+        if ($samples.Count -eq 0) {
+            Write-Warning "No [DRECOM-GS] samples captured. Confirm the latest Windows runner was downloaded."
+        } else {
+            Write-Host "Last GS samples (share only these lines for diagnosis):" -ForegroundColor Cyan
+            foreach ($sample in $samples) {
+                Write-Host $sample.Line
+            }
+            Write-Host "vramChanged=1 and frameChanges120=0 suggests the scanout is stuck on stale pixels."
+            Write-Host "vramChanged=0 and frameChanges120=0 suggests no new GS drawing activity."
+        }
+    }
 }
