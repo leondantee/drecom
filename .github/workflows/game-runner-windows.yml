@@ -7,6 +7,7 @@ on:
       - 'drecom/PS2Recomp/ps2xRuntime/**'
       - 'drecom/PS2Recomp/ps2xIOP/**'
       - 'drecom/Game/Recompiled/output/**'
+      - 'drecom/PS2Recomp/tools/Run-DRECOM-Diagnostics.*'
       - '.github/workflows/game-runner-windows.yml'
   workflow_dispatch:
 
@@ -48,6 +49,19 @@ jobs:
         run: |
           cmake --build build-game --config Release --target ps2EntryRunner --parallel 2
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Validate diagnostic launcher syntax
+        shell: pwsh
+        run: |
+          $script = 'drecom/PS2Recomp/tools/Run-DRECOM-Diagnostics.ps1'
+          $tokens = $null
+          $parseErrors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path $script).Path, [ref]$tokens, [ref]$parseErrors)
+          if ($parseErrors.Count -gt 0) {
+            $parseErrors | ForEach-Object { Write-Error $_.Message }
+            throw 'PowerShell diagnostic launcher has syntax errors'
+          }
+          Write-Host 'Diagnostic launcher syntax valid'
       - name: Prepare executable
         shell: pwsh
         run: |
