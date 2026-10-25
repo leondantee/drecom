@@ -77,7 +77,10 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: drecom-ps2-entry-runner-windows
-          path: dist/ps2EntryRunner.exe
+          path: |
+            dist/ps2EntryRunner.exe
+            dist/Run-DRECOM-Diagnostics.ps1
+            dist/Run-DRECOM-Diagnostics.cmd
           if-no-files-found: error
       - name: Publish build status to the main commit
         if: always()
