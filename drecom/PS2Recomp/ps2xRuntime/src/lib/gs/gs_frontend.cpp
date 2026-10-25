@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <mutex>
 #include <sstream>
 
 namespace
@@ -576,6 +577,8 @@ void GS::latchHostPresentationFrame()
         static std::atomic<uint64_t> lastFrameHash{0u};
         static std::atomic<uint64_t> lastRegisterHash{0u};
         static std::atomic<uint64_t> lastVramHash{0u};
+        static std::mutex vramTraceMutex;
+        static std::vector<uint8_t> previousVramSnapshot;
         static std::atomic<bool> previousVramValid{false};
         static std::atomic<uint64_t> frameChangesSinceReport{0u};
         static std::atomic<uint64_t> registerChangesSinceReport{0u};
@@ -645,11 +648,39 @@ void GS::latchHostPresentationFrame()
             }
             const bool vramValid = !vramSnapshot.empty();
             bool vramChanged = false;
+            // A full-VRAM fingerprint tells us that pixels changed somewhere,
+            // not *where*. Compare 8 KiB VRAM pages between sparse samples to
+            // distinguish a stale display region from active offscreen draws.
+            // Page indices are physical VRAM blocks, not GS FBP references
+            // to an entire framebuffer or individual scanlines.
+            static constexpr size_t kTracePageBytes = 8192u;
+            uint32_t changedVramPages = 0u;
+            int32_t firstChangedVramPage = -1;
+            bool vramPagesComparable = false;
             if (vramValid)
             {
                 const uint64_t previous = lastVramHash.exchange(vramHash, std::memory_order_relaxed);
                 vramChanged = previousVramValid.exchange(true, std::memory_order_relaxed) &&
                               previous != vramHash;
+                {
+                    std::lock_guard<std::mutex> traceLock(vramTraceMutex);
+                    vramPagesComparable = previousVramSnapshot.size() == vramSnapshot.size();
+                    if (vramPagesComparable)
+                        for (size_t begin = 0u, page = 0u; begin < vramSnapshot.size();
+                             begin += kTracePageBytes, ++page)
+                        {
+                            const size_t end = std::min(begin + kTracePageBytes, vramSnapshot.size());
+                            if (!std::equal(vramSnapshot.begin() + begin,
+                                            vramSnapshot.begin() + end,
+                                            previousVramSnapshot.begin() + begin))
+                            {
+                                ++changedVramPages;
+                                if (firstChangedVramPage < 0)
+                                    firstChangedVramPage = static_cast<int32_t>(page);
+                            }
+                        }
+                    previousVramSnapshot.swap(vramSnapshot);
+                }
             }
             std::cout << "[DRECOM-GS] tick=" << request.vsyncTick
                       << " valid=" << hasFrame
@@ -662,6 +693,9 @@ void GS::latchHostPresentationFrame()
                       << " stagnantLatches=" << stagnantLatches
                       << " vramValid=" << vramValid
                       << " vramChanged=" << vramChanged
+                      << " vramPagesComparable=" << vramPagesComparable
+                      << " changedVramPages8K=" << changedVramPages
+                      << " firstChangedVramPage8K=" << firstChangedVramPage
                       << " vramNonzero=" << vramNonzero
                       << " vramHash=0x" << std::hex << vramHash
                       << " hash=0x" << hash
