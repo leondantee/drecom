@@ -553,20 +553,26 @@ void GS::latchHostPresentationFrame()
     }
 
     const bool hasFrame = static_cast<bool>(frame);
-    // Opt-in cold-boot diagnostic: distinguish a live scanout whose content
-    // changes from a VSync loop presenting the same corrupt image forever.
-    // Keep hashing outside the GS locks and limit output to one in 120 latches.
+    // Diagnostic only: hash *every* presented frame so a repeating scene
+    // cannot change between logs without being detected. Printing remains
+    // throttled to once per 120 latches to avoid flooding PowerShell.
     static const bool traceScanout = []()
     {
         const char *flag = std::getenv("DRECOM_GS_TRACE");
         return flag && *flag && *flag != '0';
     }();
-    static std::atomic<uint64_t> traceSamples{0u};
-    static std::atomic<uint64_t> lastFrameHash{0u};
-    if (traceScanout && (traceSamples.fetch_add(1u, std::memory_order_relaxed) % 120u) == 0u)
+    if (traceScanout)
     {
-        uint64_t hash = 14695981039346656037ull; // FNV-1a offset
-        uint64_t coloredPixels = 0u;
+        static std::atomic<uint64_t> traceSamples{0u};
+        static std::atomic<uint64_t> lastFrameHash{0u};
+        static std::atomic<uint64_t> lastRegisterHash{0u};
+        static std::atomic<uint64_t> frameChangesSinceReport{0u};
+        static std::atomic<uint64_t> registerChangesSinceReport{0u};
+        static std::atomic<uint64_t> lastFrameChangeSample{1u};
+
+        const uint64_t sample = traceSamples.fetch_add(1u, std::memory_order_relaxed) + 1u;
+        uint64_t hash = 14695981039346656037ull; // FNV-1a 64-bit
+        uint64_t nonBlackPixels = 0u;
         if (hasFrame)
             for (uint32_t y = 0u; y < frame.height; ++y)
             {
@@ -574,7 +580,7 @@ void GS::latchHostPresentationFrame()
                 for (uint32_t x = 0u; x < frame.width; ++x)
                 {
                     const uint8_t *rgba = row + static_cast<size_t>(x) * 4u;
-                    coloredPixels += (rgba[0] | rgba[1] | rgba[2]) != 0u ? 1u : 0u;
+                    nonBlackPixels += (rgba[0] | rgba[1] | rgba[2]) != 0u ? 1u : 0u;
                     for (uint32_t channel = 0u; channel < 4u; ++channel)
                     {
                         hash ^= rgba[channel];
@@ -582,19 +588,59 @@ void GS::latchHostPresentationFrame()
                     }
                 }
             }
-        const uint64_t previous = lastFrameHash.exchange(hash, std::memory_order_relaxed);
-        std::cout << "[DRECOM-GS] tick=" << request.vsyncTick
-                  << " valid=" << hasFrame
-                  << " size=" << frame.width << "x" << frame.height
-                  << " fbp=" << frame.displayFbp << "/" << frame.sourceFbp
-                  << " nonblack=" << coloredPixels
-                  << " changed=" << (hash != previous)
-                  << " hash=0x" << std::hex << hash
-                  << " pmode=0x" << request.pmode
-                  << " smode2=0x" << request.smode2
-                  << " display1=0x" << request.display1
-                  << " display2=0x" << request.display2
-                  << std::dec << std::endl;
+        // Invalid frames must not be mistaken for valid, all-black frames.
+        hash ^= static_cast<uint64_t>(hasFrame);
+        hash *= 1099511628211ull;
+
+        // Fingerprint *configuration* independently from displayed pixels.
+        // A changing register state with identical pixels points at a
+        // different investigation path from completely static GS state.
+        uint64_t registerHash = 14695981039346656037ull;
+        const uint64_t registers[] = {request.pmode, request.smode2, request.dispfb1,
+                                      request.display1, request.dispfb2, request.display2,
+                                      request.bgcolor};
+        for (const uint64_t value : registers)
+            for (unsigned shift = 0u; shift < 64u; shift += 8u)
+            {
+                registerHash ^= (value >> shift) & 0xFFu;
+                registerHash *= 1099511628211ull;
+            }
+
+        const uint64_t previousFrame = lastFrameHash.exchange(hash, std::memory_order_relaxed);
+        const uint64_t previousRegs = lastRegisterHash.exchange(registerHash, std::memory_order_relaxed);
+        const bool frameChanged = sample > 1u && hash != previousFrame;
+        const bool registersChanged = sample > 1u && registerHash != previousRegs;
+        if (frameChanged)
+        {
+            frameChangesSinceReport.fetch_add(1u, std::memory_order_relaxed);
+            lastFrameChangeSample.store(sample, std::memory_order_relaxed);
+        }
+        if (registersChanged)
+            registerChangesSinceReport.fetch_add(1u, std::memory_order_relaxed);
+
+        if (((sample - 1u) % 120u) == 0u)
+        {
+            const uint64_t frameChanges = frameChangesSinceReport.exchange(0u, std::memory_order_relaxed);
+            const uint64_t registerChanges = registerChangesSinceReport.exchange(0u, std::memory_order_relaxed);
+            const uint64_t stagnantLatches = sample - lastFrameChangeSample.load(std::memory_order_relaxed);
+            std::cout << "[DRECOM-GS] tick=" << request.vsyncTick
+                      << " valid=" << hasFrame
+                      << " size=" << frame.width << "x" << frame.height
+                      << " fbp=" << frame.displayFbp << "/" << frame.sourceFbp
+                      << " nonblack=" << nonBlackPixels
+                      << " changed=" << frameChanged
+                      << " frameChanges120=" << frameChanges
+                      << " registerChanges120=" << registerChanges
+                      << " stagnantLatches=" << stagnantLatches
+                      << " hash=0x" << std::hex << hash
+                      << " pmode=0x" << request.pmode
+                      << " smode2=0x" << request.smode2
+                      << " dispfb1=0x" << request.dispfb1
+                      << " display1=0x" << request.display1
+                      << " dispfb2=0x" << request.dispfb2
+                      << " display2=0x" << request.display2
+                      << std::dec << std::endl;
+        }
     }
     const uint32_t displayFbp = frame.displayFbp;
     const uint32_t sourceFbp = frame.sourceFbp;
