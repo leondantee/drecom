@@ -541,6 +541,20 @@ void GS::latchHostPresentationFrame()
         request = buildPresentationRequestUnlocked();
     }
 
+    // Optional diagnostics distinguish a stuck game/rasterizer (unchanged
+    // VRAM) from a scanout selecting the wrong, static VRAM page. Take the
+    // VRAM sample together with Present(), under the same backend lifetime
+    // lock, only every 120 latches. All other frames remain uninstrumented.
+    static const bool traceScanout = []()
+    {
+        const char *flag = std::getenv("DRECOM_GS_TRACE");
+        return flag && *flag && *flag != '0';
+    }();
+    static std::atomic<uint64_t> traceSamples{0u};
+    const uint64_t sample = traceScanout
+        ? traceSamples.fetch_add(1u, std::memory_order_relaxed) + 1u : 0u;
+    const bool sampleVram = traceScanout && ((sample - 1u) % 120u) == 0u;
+    std::vector<uint8_t> vramSnapshot;
     PresentationFrame frame{};
     {
         std::lock_guard<std::mutex> backendLock(m_backendLifetimeMutex);
@@ -549,28 +563,24 @@ void GS::latchHostPresentationFrame()
             m_backend->Flush();
             m_backend->Sync(GSSyncReason::Presentation);
             frame = m_backend->Present(request);
+            if (sampleVram)
+                m_backend->SnapshotVram(vramSnapshot);
         }
     }
 
     const bool hasFrame = static_cast<bool>(frame);
-    // Diagnostic only: hash *every* presented frame so a repeating scene
-    // cannot change between logs without being detected. Printing remains
-    // throttled to once per 120 latches to avoid flooding PowerShell.
-    static const bool traceScanout = []()
-    {
-        const char *flag = std::getenv("DRECOM_GS_TRACE");
-        return flag && *flag && *flag != '0';
-    }();
+    // Hash every presented frame; throttle reporting to once per 120
+    // latches so PowerShell stays usable.
     if (traceScanout)
     {
-        static std::atomic<uint64_t> traceSamples{0u};
         static std::atomic<uint64_t> lastFrameHash{0u};
         static std::atomic<uint64_t> lastRegisterHash{0u};
+        static std::atomic<uint64_t> lastVramHash{0u};
+        static std::atomic<bool> previousVramValid{false};
         static std::atomic<uint64_t> frameChangesSinceReport{0u};
         static std::atomic<uint64_t> registerChangesSinceReport{0u};
         static std::atomic<uint64_t> lastFrameChangeSample{1u};
 
-        const uint64_t sample = traceSamples.fetch_add(1u, std::memory_order_relaxed) + 1u;
         uint64_t hash = 14695981039346656037ull; // FNV-1a 64-bit
         uint64_t nonBlackPixels = 0u;
         if (hasFrame)
@@ -623,6 +633,24 @@ void GS::latchHostPresentationFrame()
             const uint64_t frameChanges = frameChangesSinceReport.exchange(0u, std::memory_order_relaxed);
             const uint64_t registerChanges = registerChangesSinceReport.exchange(0u, std::memory_order_relaxed);
             const uint64_t stagnantLatches = sample - lastFrameChangeSample.load(std::memory_order_relaxed);
+            // This independent fingerprint covers ALL GS VRAM, not merely
+            // the frame page selected by the current DISPFB registers.
+            uint64_t vramHash = 14695981039346656037ull;
+            uint64_t vramNonzero = 0u;
+            for (const uint8_t byte : vramSnapshot)
+            {
+                vramHash ^= byte;
+                vramHash *= 1099511628211ull;
+                vramNonzero += byte != 0u ? 1u : 0u;
+            }
+            const bool vramValid = !vramSnapshot.empty();
+            bool vramChanged = false;
+            if (vramValid)
+            {
+                const uint64_t previous = lastVramHash.exchange(vramHash, std::memory_order_relaxed);
+                vramChanged = previousVramValid.exchange(true, std::memory_order_relaxed) &&
+                              previous != vramHash;
+            }
             std::cout << "[DRECOM-GS] tick=" << request.vsyncTick
                       << " valid=" << hasFrame
                       << " size=" << frame.width << "x" << frame.height
@@ -632,7 +660,11 @@ void GS::latchHostPresentationFrame()
                       << " frameChanges120=" << frameChanges
                       << " registerChanges120=" << registerChanges
                       << " stagnantLatches=" << stagnantLatches
-                      << " hash=0x" << std::hex << hash
+                      << " vramValid=" << vramValid
+                      << " vramChanged=" << vramChanged
+                      << " vramNonzero=" << vramNonzero
+                      << " vramHash=0x" << std::hex << vramHash
+                      << " hash=0x" << hash
                       << " pmode=0x" << request.pmode
                       << " smode2=0x" << request.smode2
                       << " dispfb1=0x" << request.dispfb1
