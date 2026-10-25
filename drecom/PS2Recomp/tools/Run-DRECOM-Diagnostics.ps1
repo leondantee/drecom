@@ -77,15 +77,25 @@ Write-Host "Guest ELF: $GuestElf"
 Write-Host "Extracted root: $ExtractedRoot"
 Write-Host "Log: $log"
 Write-Host "Close the game window or press Ctrl+C to stop."
-Write-Host "Look for [DRECOM-GS] frameChanges120, registerChanges120 and vramChanged."
+Write-Host "Only important diagnostics will appear here; full runtime output is saved locally."
+Write-Host "Watch [DRECOM-GS] frameChanges120, vramChanged and changedVramPages8K."
 Write-Host "The last GS samples will be summarized when the runner exits."
 Write-Host ""
 
-# Keep ordinary runtime output visible while saving a durable trace.
-# PowerShell can render stderr as error records; keep the pipeline running.
+# Don't flood PowerShell with per-tick rendering messages. Preserve the
+# complete output in a local file, but display only actionable diagnostics.
+# Stderr may be wrapped in PowerShell error records; convert to text when
+# deciding whether it is useful to show on screen.
 $ErrorActionPreference = "Continue"
 try {
-    & $runner $GuestElf 2>&1 | Tee-Object -FilePath $log
+    & $runner $GuestElf 2>&1 |
+        Tee-Object -FilePath $log |
+        ForEach-Object {
+            $line = [string]$_
+            if ($line -match '\[(DRECOM-GS|CDVD|main|terminate)\]|fatal|exception') {
+                Write-Host $line
+            }
+        }
 } finally {
     Write-Host ""
     Write-Host "Diagnostic log (local only): $log" -ForegroundColor Cyan
@@ -101,8 +111,9 @@ try {
             foreach ($sample in $samples) {
                 Write-Host $sample.Line
             }
-            Write-Host "vramChanged=1 and frameChanges120=0 suggests the scanout is stuck on stale pixels."
-            Write-Host "vramChanged=0 and frameChanges120=0 suggests no new GS drawing activity."
+            Write-Host "frameChanges120=0 with vramChanged=1 means GS VRAM changed but the displayed frame did not."
+            Write-Host "changedVramPages8K counts changed physical pages (not PS2 display-frame numbers)."
+            Write-Host "frameChanges120=0 with vramChanged=0 means no sampled VRAM or display change; inspect the guest PC and DMA."
         }
     }
 }
