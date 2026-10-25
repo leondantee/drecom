@@ -104,3 +104,41 @@ Verification remains open until the updated runs finish and are inspected:
 Most importantly, neither tests nor compilation prove that the user's
 previously static window now displays valid advancing gameplay. That
 requires a new run with the local Trial assets and `DRECOM_GS_TRACE=1`.
+
+
+## Diagnostic hardening: distinguish pixel and register progress
+
+Commit `8bdba58` updates the opt-in `DRECOM_GS_TRACE=1` path in
+`gs_frontend.cpp`. Previously the code hashed the screen only on
+every 120th presentation. A frame could change between the sampled
+presentations and still appear unchanged, a false-negative for progress.
+
+The improved probe hashes each presentation when tracing is enabled,
+while printing only once per 120 latches. The new fields are:
+
+- `frameChanges120`: number of pixel-hash transitions during the interval.
+- `registerChanges120`: changes to the GS display configuration
+  (PMODE, SMODE2, DISPFB1/2, DISPLAY1/2, BGCOLOR), measured separately.
+- `stagnantLatches`: latches elapsed since the last pixel-content change.
+- `dispfb1`/`dispfb2`: both visible framebuffer register values.
+
+These are *diagnostic counters*, not proof of game progression:
+a full-screen moving scene can have a stationary framebuffer register,
+and a program stuck in a loop can change pixels continuously.
+
+Interpretation after running the **newly built** runner with the locally
+owned Trial files:
+
+- `frameChanges120 > 0`: scanout bytes changed between presentations,
+  even if sampled screenshots happened to match.
+- `frameChanges120 = 0` and `registerChanges120 > 0`: display state
+  changes but visible bytes do not; investigate register interpretation,
+  buffer selection and VRAM writes.
+- Both zero for multiple intervals: inspect EE progression, IOP RPC,
+  GIF/DMA/VIF activity and the original Trial's PCSX2 state.
+- `valid=0`: presentation failed; diagnose GS state/backend directly.
+
+The tracer runs only when explicitly enabled, and its hashing overhead
+is not included in performance benchmarks. All runtime results remain
+unverified until someone executes the resulting Windows build against
+local game data; GitHub CI cannot do this without the original disc.
