@@ -55,7 +55,10 @@ jobs:
           if ($exe.Count -eq 0) { throw 'Build succeeded without producing ps2EntryRunner.exe' }
           New-Item dist -ItemType Directory -Force | Out-Null
           Copy-Item $exe[0].FullName dist/ps2EntryRunner.exe -Force
+          Copy-Item drecom/PS2Recomp/tools/Run-DRECOM-Diagnostics.ps1 dist/Run-DRECOM-Diagnostics.ps1 -Force
+          Copy-Item drecom/PS2Recomp/tools/Run-DRECOM-Diagnostics.cmd dist/Run-DRECOM-Diagnostics.cmd -Force
           Write-Host "Built executable: $($exe[0].FullName)"
+          Write-Host "Diagnostic launcher packaged beside executable"
       - name: Upload game runner executable
         uses: actions/upload-artifact@v6
         with:
